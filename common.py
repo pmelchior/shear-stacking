@@ -46,7 +46,7 @@ def extrap(x, xp, yp):
     return y  
 
 
-from galsim.lensing import Cosmology
+from galsim import Cosmology
 cosmo = Cosmology()
 def getBeta(z_c, z):
     if z_c >= z:
