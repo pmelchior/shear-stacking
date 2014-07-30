@@ -6,7 +6,7 @@ import pylab as plt
 import numpy as np
 import esutil as eu
 import pyfits
-from sys import argv
+from sys import argv,stdout
 from os.path import exists
 from common import *
 from glob import glob
@@ -27,12 +27,15 @@ def getSliceMask(values, lower, upper, return_num=False):
 
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
-def makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices, splittings, key_name, lw=1):
+def makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices, splittings, key_name, lw=1, mean_profile=None):
     if plt.matplotlib.rcParams['text.usetex']:
         label = r'\texttt{' + key_name.replace("_", "\_") + '} all'
     else:
         label = key_name + " all"
-    mean_r, n, mean_q, std_q = scalarProfile(bins, radius, DeltaSigma, weight)
+    if mean_profile is None:
+        mean_r, n, mean_q, std_q = scalarProfile(bins, radius, DeltaSigma, weight)
+    else:
+        mean_r, n, mean_q, std_q = mean_profile
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label=label, lw=lw)
 
     # use a diverging colormap for the colors of lines
@@ -43,13 +46,12 @@ def makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices, splittings, ke
     # make the profile for each split
     for s in range(len(splittings)-1):
         label = '$\in[%.2f, %.2f)$' % (splittings[s], splittings[s+1])
-        if s == 0:
-            label = '$<%.2f$' % splittings[s+1]
-        if s == len(splittings)-2:
-            label = '$\geq %.2f$' % splittings[s]
         if slices[s].size:
-            mean_r, n, mean_q, std_q = scalarProfile(bins, radius[slices[s]], DeltaSigma[slices[s]], weight[slices[s]])
-            ax.errorbar(mean_r, mean_q, yerr=std_q, c=scalarMap.to_rgba(s), marker='.', label=label, lw=lw)
+            mean_r_, n_, mean_q_, std_q_ = scalarProfile(bins, radius[slices[s]], DeltaSigma[slices[s]], weight[slices[s]])
+            ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=scalarMap.to_rgba(s), marker='.', label=label, lw=lw)
+    pivot = (mean_q + std_q/2).max()
+    ax.set_ylim(-0.25*pivot, 1.25*pivot)
+    return mean_r, n, mean_q, std_q
 
 def sizeRatio(data):
     return 2*data['RADIUS'] / (data['PSF_FWHM'] * 0.263)
@@ -57,107 +59,59 @@ def sizeRatio(data):
 def SNRadius(data):
     return data['SNR'] * data['RADIUS']
 
-from struct import unpack
-class HTMFile:
-    """Class to read in HTM match files sequentially
-    
-    Provides two convenient iterators:
-      htmf = HTMFile(filename)
-      for m1, m2, d12 in htmf:
-          # do somthing with a single matched m1, m2
-      for m1, m2s, d12s in htmf.matches():
-          # do something with the list of matches m2s of a single m1
-    """
-    def __init__(self, filename):
-        self.fp = open(filename, 'rb')
-        self.n_matches = unpack('q', self.fp.read(8))[0]
-        self.m1_current = -1
-    def __iter__(self):
-        return self
-    def next(self):
-        """Line iterator.
-
-        Returns one match of m1 and m2 with the relative distance d12 (in deg).
-        """
-        line = self.fp.read(24)
-        if line != '':
-            return unpack('qqd', line)
-        else:
-            raise StopIteration
-    def matches(self):
-        """Match iterator.
-        
-        Returns the current match index m1, the list of matches m2 and their
-        respective distances (in deg).
-        """
-        while self.fp.tell() < self.n_matches * 24:
-            m1, m2, d12 = self.next()
-            self.m1_current = m1
-            m2s = [m2]
-            d12s = [d12]
-            while True:
-                try:
-                    m1, m2, d12 = self.next()
-                    if m1 == self.m1_current:
-                        m2s.append(m2)
-                        d12s.append(d12)
-                    else: # if next m1: rewind to previous line
-                        self.fp.seek(-24, 1)
-                        break
-                except StopIteration: # at end of file, return current set
-                    break
-            yield self.m1_current, m2s, d12s
-    def __del__(self):
-        self.fp.close()
-
 
 if __name__ == '__main__':
-    if len(argv) < 2:
-        print "usage: " + argv[0] + " <band>"
+    if len(argv) < 5:
+        print "usage: " + argv[0] + " <lens catalog> <shape catalog> <band> <output label>"
         exit(1)
 
-    band = argv[1]
-    lensfile = 'data/sva1_gold_1.0_run_redmapper_v5.9_lgt20_catalog.fit'
+    lensfile = argv[1]
+    shapefile = argv[2]
+    band = argv[3]
+    label = argv[4]
+    maxrange = 30.  # arcmin
     lens_z_key = 'Z_LAMBDA'
-    shapefile = 'data/011-im3shape-3_' + band.lower() + '_photoz_gold_Feb12.fits'
+    shape_z_key = 'ZP'
+    keys = [shape_z_key, 'FLUX_RADIUS_' + band.upper(), 'im3shape_' + band.lower() + '_snr', 'im3shape_' + band.lower() + '_n_exposure']
+
     matchfile = '/tmp/matches_' + band.lower() + '.bin'
-    stackfile = '/tmp/shear_stack_' + band.lower() + '.npz'
-    plotfile = 'shear_stack_' + band.lower() + '.pdf'
-    keys = ['SNR', 'RADIUS', 'PSF_FWHM', sizeRatio, 'RGPP_RP', SNRadius, 'ZP_2', 'FLAGS_' + band.upper()]
+    stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
+    plotfile = 'shear_stack_' + band.lower() + '_' + label + '.pdf'
     # slices are either equal-volumne or pre-determined
     split = 2 # equal-volume slices
-    splittings = [split, split, split, split, split, split, split, [0,1,10]]
-
-    # open lens catalog, apply selection if desired
-    hdu = pyfits.open(lensfile)
-    lenses = hdu[1].data
-    #good_cl = (lenses[lens_z_key] < 0.8) & (lenses[lens_z_key] > 0.1)
-    #lenses = lenses[good_cl]
-    print "lens sample: %d" % lenses.size
-
-    # open shapes, apply post-run selections
-    shdu = pyfits.open(shapefile)
-    good_sh = ((shdu[1].data['FLAG'] & (1+4+8)) == 0) & invert(isnan(shdu[1].data['SNR'])) & (shdu[1].data['SNR'] > 5) & (shdu[1].data['FLAGS_I'] == 0) & (shdu[1].data['FLAGS_R'] == 0)
-    shapes = shdu[1].data[good_sh]
-
-    # find all galaxies in shape catalog within maxranfe arcmin 
-    # of each lens center
-    # NOTE: maxrange can be changed for each cluster when working in Mpc instead of arcmin
-    print "matching lens and source catalog..."
-    maxrange = 30. # arcmin
-    if exists(matchfile) is False:
-        # CAVEAT: make sure to have enough space where you put the match file
-        # it has 24 byte per match, which quickly becomes Gb's of data 
-        h = eu.htm.HTM(8)
-        h.match(lenses['RA'], lenses['DEC'], shapes['RA'], shapes['DEC'], maxrange/60, maxmatch=-1, file=matchfile)
-        del h
-    else:
-        print " re-using existing matchfile", matchfile
- 
-    htmf = HTMFile(matchfile)
-    print " found ", htmf.n_matches, "matches"
+    splittings = [[0.7, 0.9, 1.1, 1.5], [1,3,4,10], [10,20,30,100], [4,8,12,20]]
 
     if exists(stackfile) is False:
+        # open lens catalog, apply selection if desired
+        hdu = pyfits.open(lensfile)
+        lenses = hdu[1].data
+        #good_cl = (lenses[lens_z_key] < 0.8) & (lenses[lens_z_key] > 0.1)
+        #lenses = lenses[good_cl]
+        print "lens sample: %d" % lenses.size
+
+        # open shapes, apply post-run selections
+        shdu = pyfits.open(shapefile)
+        good_sh = (shdu[1].data['im3shape_' + band.lower() + '_exists'] == 1) & ((shdu[1].data['im3shape_' + band.lower() + '_flag'] & (1+4+8)) == 0) & (shdu[1].data['im3shape_' + band.lower() + '_snr'] > 5) & (shdu[1].data['FLAGS_' + band.upper()] == 0)
+        shapes = shdu[1].data[good_sh]
+        print "shape sample: %d" % shapes.size
+
+        # find all galaxies in shape catalog within maxranfe arcmin 
+        # of each lens center
+        # NOTE: maxrange can be changed for each cluster when working in Mpc instead of arcmin
+        print "matching lens and source catalog..."
+        if exists(matchfile) is False:
+            # CAVEAT: make sure to have enough space where you put the match file
+            # it has 24 byte per match, which quickly becomes Gb's of data 
+            h = eu.htm.HTM(8)
+            h.match(lenses['RA'], lenses['DEC'], shapes['ra'], shapes['dec'], maxrange/60, maxmatch=-1, file=matchfile)
+            del h
+        else:
+            print "  re-using existing matchfile", matchfile
+
+        htmf = HTMFile(matchfile)
+        print "  found ", htmf.n_matches, "matches"
+
+
         # set up the container for the shears
         Ngal = htmf.n_matches
         DeltaSigma = np.empty(Ngal, dtype='float32')
@@ -193,6 +147,7 @@ if __name__ == '__main__':
                 splittings[i] = percentile(values, ranges)
                 del ranges
             del values
+            print "  " + key_name + ":", splittings[i]
 
         # remember the last element (of the whole array DeltaSigma) for each
         # of the slices
@@ -212,13 +167,13 @@ if __name__ == '__main__':
 
             # compute effective Sigma_crit
             z_phot, cz = getSigmaCritCorrection(specz_calib, lens[lens_z_key])
-            sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens['ZP_2'])
+            sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[shape_z_key])
             # determine extent in DeltaSigma array
             lower, upper = last_element['all'], last_element['all'] + len(m2)
             elements = np.arange(lower, upper, dtype='int64')
-            DeltaSigma[lower:upper] = sigma_crit * tangentialShear(shapes_lens['RA'], shapes_lens['DEC'], shapes_lens['S1'], -shapes_lens['S2'], lens['RA'], lens['DEC'], computeB=False)
+            DeltaSigma[lower:upper] = sigma_crit * tangentialShear(shapes_lens['ra'], shapes_lens['dec'], shapes_lens['im3shape_' + band.lower() + '_e1'], -shapes_lens['im3shape_' + band.lower() + '_e2'], lens['RA'], lens['DEC'], computeB=False)
             radius[lower:upper] = d12
-            weight[lower:upper] = 0.2/(0.2**2 + (0.1*20/shapes_lens['SNR'])**2)**0.5/sigma_crit**2
+            weight[lower:upper] = 0.2/(0.2**2 + (0.1*20/shapes_lens['im3shape_' + band.lower() + '_snr'])**2)**0.5/sigma_crit**2
             last_element['all'] += len(m2)
 
             # get indices for all sources in each slice
@@ -241,10 +196,10 @@ if __name__ == '__main__':
                     del mask
                 del values
             del shapes_lens, elements, z_phot, cz, sigma_crit
-            if counter % 100 == 0:
-                print counter
+            stdout.write('\r')
+            stdout.write('  lens %d, matched %.2f%%' % (counter, upper*100./htmf.n_matches))
+            stdout.flush()
             counter += 1
-        print counter
 
         # reduce the size of the containers to last_element
         DeltaSigma.resize((last_element['all']), refcheck=False)
@@ -264,7 +219,7 @@ if __name__ == '__main__':
         np.savez(stackfile, **kwargs)
     else:
         # load from previously saved file
-        print " loading from file", stackfile
+        print "loading from file", stackfile
         X = np.load(stackfile)
         DeltaSigma = X['DeltaSigma']
         weight = X['weight']
@@ -287,23 +242,24 @@ if __name__ == '__main__':
     # Plot generation
     print "generating plots..."
     bins = np.arange(1, maxrange, 2)
-    # FIXME: needs to be automatically adjusted???
-    ylim = (-0.25, 1)
     xlim = (1, maxrange + 1)
     maxcol = 4 # how many columns per row
     rows = (len(keys)-1)/maxcol + 1
     fig = plt.figure(figsize=(12, 4*rows))
 
+    mean_profile = None
     for i in range(len(keys)):
         if callable(keys[i]):
             key_name = keys[i].__name__
         else:
             key_name = keys[i]
         ax = fig.add_subplot(rows, min(maxcol, len(keys)), i+1)
-        makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name)
+        if mean_profile is None:
+            mean_profile = makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name)
+        else:
+            makeSlicedProfilePlot(ax, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name, mean_profile=mean_profile)
         ax.plot(xlim, [0,0], 'k:')
         ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
         ax.legend(loc='upper right', numpoints=1, frameon=False)
         if i/maxcol == rows-1:
             ax.set_xlabel('Radius [arcmin]')

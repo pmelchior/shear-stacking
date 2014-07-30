@@ -28,8 +28,8 @@ def scalarProfile(bins, r, q, weight):
     for i in range(len(bins)-1):
         mask = (r >= bins[i]) & (r < bins[i+1])
         n[i] = sum(mask)
-        mean_r[i] = r[mask].mean()
         V1 = weight[mask].sum()
+        mean_r[i] = (r[mask]*weight[mask]).sum()/V1
         mean_q[i] = (q[mask]*weight[mask]).sum()/V1
         # CAUTION: assumes Gaussian errors and large samples
         # replace with Jackknife/Bootstrap estimate!
@@ -80,4 +80,57 @@ def getSigmaCritCorrection(specz_calib, z_c):
 
 def getSigmaCritEffective(z_phot, cz, z):
     return extrap(z, z_phot, cz)
+
+from struct import unpack
+class HTMFile:
+    """Class to read in HTM match files sequentially
+    
+    Provides two convenient iterators:
+      htmf = HTMFile(filename)
+      for m1, m2, d12 in htmf:
+          # do somthing with a single matched m1, m2
+      for m1, m2s, d12s in htmf.matches():
+          # do something with the list of matches m2s of a single m1
+    """
+    def __init__(self, filename):
+        self.fp = open(filename, 'rb')
+        self.n_matches = unpack('q', self.fp.read(8))[0]
+        self.m1_current = -1
+    def __iter__(self):
+        return self
+    def next(self):
+        """Line iterator.
+
+        Returns one match of m1 and m2 with the relative distance d12 (in deg).
+        """
+        line = self.fp.read(24)
+        if line != '':
+            return unpack('qqd', line)
+        else:
+            raise StopIteration
+    def matches(self):
+        """Match iterator.
+        
+        Returns the current match index m1, the list of matches m2 and their
+        respective distances (in deg).
+        """
+        while self.fp.tell() < self.n_matches * 24:
+            m1, m2, d12 = self.next()
+            self.m1_current = m1
+            m2s = [m2]
+            d12s = [d12]
+            while True:
+                try:
+                    m1, m2, d12 = self.next()
+                    if m1 == self.m1_current:
+                        m2s.append(m2)
+                        d12s.append(d12)
+                    else: # if next m1: rewind to previous line
+                        self.fp.seek(-24, 1)
+                        break
+                except StopIteration: # at end of file, return current set
+                    break
+            yield self.m1_current, m2s, d12s
+    def __del__(self):
+        self.fp.close()
 
