@@ -81,6 +81,18 @@ def getSigmaCritCorrection(specz_calib, z_c):
 def getSigmaCritEffective(z_phot, cz, z):
     return extrap(z, z_phot, cz)
 
+# radius of galaxy compared to PSF
+def sizeRatio(data):
+    return 2*data['RADIUS'] / (data['PSF_FWHM'] * 0.263)
+
+# approximation of SNR of the size (instead of the flux)
+def SNRadius(data):
+    return data['SNR'] * data['RADIUS']
+
+# Eli's modest S/G classification
+def ModestSG(data):
+    return invert(((data['CLASS_STAR_I'] > 0.3) & (data['MAG_AUTO_I'] < 18.0)) | ((data['SPREAD_MODEL_I'] + 3*data['SPREADERR_MODEL_I'] < 0.003) | ((data['MAG_PSF_I'] > 30.0) & (data['MAG_AUTO_I'] < 21.0)))) & (abs(data['SPREAD_MODEL_I']) < 0.1)  &  (data['FLAGS_I'] <= 3)
+
 from struct import unpack
 class HTMFile:
     """Class to read in HTM match files sequentially
@@ -134,3 +146,27 @@ class HTMFile:
     def __del__(self):
         self.fp.close()
 
+# use actual LaTeX to render plot and fonts
+from pylab import rcParams
+def setTeXPlot(sampling=1):
+    params = {
+        'backend': 'ps',
+        'ps.distiller.res': 6000,
+        'axes.labelsize': sampling*9,
+        'axes.linewidth' : sampling*0.25,
+        'font.size': sampling*8,
+        'text.fontsize': sampling*8,
+        'legend.fontsize': sampling*8,
+        'legend.markerscale' : sampling*0.5,
+        'xtick.labelsize': sampling*8,
+        'ytick.labelsize': sampling*8,
+        'font.family': 'serif',
+        'font.serif': 'Times',
+        'font.weight': 'medium',
+        'text.usetex': 'times',
+        'figure.subplot.right' : 0.995,
+        'figure.subplot.top' : 0.97,
+        'figure.subplot.left' : 0.125,
+        'figure.subplot.bottom' : 0.07,
+    }
+    rcParams.update(params)
