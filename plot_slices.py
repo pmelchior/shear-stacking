@@ -89,7 +89,7 @@ if __name__ == '__main__':
         tmpdir = argv[3]
     else:
         tmpdir = "/tmp/"
-    matchfile = tmpdir + '/matches_' + band.lower() + '_' + label + '.bin'
+
     stackfile = tmpdir + '/shear_stack_' + band.lower() + '_' + label + '.npz'
     plotfile = 'shear_stack_slices_' + band.lower() + '_' + label + '.pdf'
 

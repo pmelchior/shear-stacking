@@ -44,7 +44,7 @@ if __name__ == '__main__':
     splittings = []
 
     matchfile = tmpdir + '/matches_' + band.lower()  + '_' + label + '.bin'
-    stackfile = tmpdir + '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
+    stackfile = tmpdir + '/shear_stack_' + band.lower() + '_' + label + '.npz'
 
     if exists(stackfile) is False:
         # open lens catalog, apply selection if desired

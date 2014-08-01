@@ -35,8 +35,8 @@ if __name__ == '__main__':
         tmpdir = argv[3]
     else:
         tmpdir = "/tmp/"
-    matchfile = '/tmp/matches_' + band.lower() + '_' + label + '.bin'
-    stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
+
+    stackfile = tmpdir + '/shear_stack_' + band.lower() + '_' + label + '.npz'
     plotfile = 'shear_stack_EB_' + band.lower() + '_' + label + '.pdf'
 
     if exists(stackfile) is False:
