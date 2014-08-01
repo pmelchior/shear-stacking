@@ -26,12 +26,16 @@ def makeEBProfilePlot(ax, bins, radius, DeltaSigma, DeltaSigma_cross, weight, lw
 
 if __name__ == '__main__':
     if len(argv) < 3:
-        print "usage: " + argv[0] + " <band> <output label>"
+        print "usage: " + argv[0] + " <band> <output label> [tmpdir]"
         exit(1)
 
     band = argv[1]
     label = argv[2]
-    matchfile = '/tmp/matches_' + band.lower() + '.bin'
+    if len(argv) > 3:
+        tmpdir = argv[3]
+    else:
+        tmpdir = "/tmp/"
+    matchfile = '/tmp/matches_' + band.lower() + '_' + label + '.bin'
     stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
     plotfile = 'shear_stack_EB_' + band.lower() + '_' + label + '.pdf'
 

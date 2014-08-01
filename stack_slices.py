@@ -23,13 +23,18 @@ def getSliceMask(values, lower, upper, return_num=False):
 
 if __name__ == '__main__':
     if len(argv) < 5:
-        print "usage: " + argv[0] + " <lens catalog> <shape catalog> <band> <output label>"
+        print "usage: " + argv[0] + " <lens catalog> <shape catalog> <band> <output label> [tmpdir]"
         exit(1)
 
     lensfile = argv[1]
     shapefile = argv[2]
     band = argv[3]
     label = argv[4]
+    if len(argv) > 5:
+        tmpdir = argv[5]
+    else:
+        tmpdir = "/tmp/"
+
     maxrange = 72.  # arcmin
     lens_z_key = 'Z_LAMBDA'
     shape_z_key = 'ZP'
@@ -38,8 +43,8 @@ if __name__ == '__main__':
     keys = []
     splittings = []
 
-    matchfile = '/tmp/matches_' + band.lower()  + '_' + label + '.bin'
-    stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
+    matchfile = tmpdir + '/matches_' + band.lower()  + '_' + label + '.bin'
+    stackfile = tmpdir + '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
 
     if exists(stackfile) is False:
         # open lens catalog, apply selection if desired
