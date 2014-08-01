@@ -33,7 +33,7 @@ if __name__ == '__main__':
     label = argv[2]
     matchfile = '/tmp/matches_' + band.lower() + '.bin'
     stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
-    plotfile = 'EB_stack_' + band.lower() + '_' + label + '.pdf'
+    plotfile = 'shear_stack_EB_' + band.lower() + '_' + label + '.pdf'
 
     if exists(stackfile) is False:
         print "run stack_slices.py before!"
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     ax = fig.add_subplot(111)
     makeEBProfilePlot(ax, bins, radius, DeltaSigma, DeltaSigma_cross, weight)
     ax.set_xlabel('Radius [arcmin]')
-    ax.set_ylabel(r'$\Delta\Sigma\ [10^{14} \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
+    ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     plt.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.99, top=0.97)
     plt.savefig(plotfile)
     print "done. open", plotfile

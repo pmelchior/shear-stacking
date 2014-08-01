@@ -30,24 +30,23 @@ if __name__ == '__main__':
     shapefile = argv[2]
     band = argv[3]
     label = argv[4]
-    maxrange = 30.  # arcmin
+    maxrange = 72.  # arcmin
     lens_z_key = 'Z_LAMBDA'
     shape_z_key = 'ZP'
-    keys = [shape_z_key, 'FLUX_RADIUS_' + band.upper(), 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_snr']
-    # slices are either equal-volumne or pre-determined
-    split = 2 # equal-volume slices
-    splittings = [[0.7, 0.9, 1.1, 1.5], [1,3,5,100], [0.263,0.789,1.315,26.3], [5,10,20,40,100]]
+    #keys = [shape_z_key, 'FLUX_RADIUS_' + band.upper(), 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_snr']
+    #splittings = [[0.7, 0.9, 1.1, 1.5], [1,3,5,100], [0.263,0.789,1.315,26.3], [5,10,20,40,100]]
+    keys = []
+    splittings = []
 
-    matchfile = '/tmp/matches_' + band.lower() + '.bin'
+    matchfile = '/tmp/matches_' + band.lower()  + '_' + label + '.bin'
     stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
-    plotfile = 'shear_stack_' + band.lower() + '_' + label + '.pdf'
 
     if exists(stackfile) is False:
         # open lens catalog, apply selection if desired
         hdu = pyfits.open(lensfile)
         lenses = hdu[1].data
-        good_cl = (lenses[lens_z_key] < 0.6)
-        lenses = lenses[good_cl]
+        #good_cl = (lenses[lens_z_key] < 0.6)
+        #lenses = lenses[good_cl]
         print "lens sample: %d" % lenses.size
 
         # open shapes, apply post-run selections
@@ -58,7 +57,7 @@ if __name__ == '__main__':
 
         # find all galaxies in shape catalog within maxranfe arcmin 
         # of each lens center
-        # NOTE: maxrange can be changed for each cluster when working in Mpc instead of arcmin
+        # NOTE: maxrange could be changed for each cluster when working in Mpc instead of arcmin
         print "matching lens and source catalog..."
         if exists(matchfile) is False:
             # CAVEAT: make sure to have enough space where you put the match file
@@ -171,13 +170,22 @@ if __name__ == '__main__':
         for k,v in slices.iteritems():
             for vv in v.keys():
                 slices[k][vv].resize((last_element[k][vv]), refcheck=False)
+
         # save the entire shebang
+        print "saving stack file"
         kwargs = {"DeltaSigma": DeltaSigma, "DeltaSigma_cross": DeltaSigma_cross, "weight": weight, "radius": radius}
-        for k,v in slices.iteritems():
-            for vv in v.keys():
-                argname = k + "_%d" % vv
-                kwargs[argname] = slices[k][vv]
+        keynames = []
+        for k in keys:
+            if callable(k):
+                key_name = k.__name__
+            else:
+                key_name = k
+            keynames.append(key_name)
+            for vv in slices[key_name].keys():
+                argname = key_name + "_%d" % vv
+                kwargs[argname] = slices[key_name][vv]
         kwargs['splittings'] = splittings
+        kwargs['keys'] = keynames
         np.savez(stackfile, **kwargs)
     else:
         # load from previously saved file

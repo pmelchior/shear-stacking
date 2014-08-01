@@ -87,7 +87,7 @@ if __name__ == '__main__':
     label = argv[2]
     matchfile = '/tmp/matches_' + band.lower() + '.bin'
     stackfile = '/tmp/shear_stack_' + band.lower() + '_' + label + '.npz'
-    plotfile = 'shear_stack_' + band.lower() + '_' + label + '.pdf'
+    plotfile = 'shear_stack_slices_' + band.lower() + '_' + label + '.pdf'
 
     if exists(stackfile) is False:
         print "run stack_slices.py before!"
@@ -100,20 +100,14 @@ if __name__ == '__main__':
         weight = X['weight']
         radius = X['radius']
         maxrange = np.ceil(radius.max())
+        keys = X['keys']
         splittings = X['splittings']
         slices = {}
         for i in range(len(keys)):
-            if callable(keys[i]):
-                key_name = keys[i].__name__
-            else:
-                key_name = keys[i]
+            key_name = keys[i]
             slices[key_name] = {}
-            if iterable(splittings[i]):
-                for s in range(len(splittings[i])-1):
-                    slices[key_name][s] = X[key_name + "_%d" % s]
-            else:
-                for s in range(splittings[i]):
-                    slices[key_name][s] = X[key_name + "_%d" % s]
+            for s in range(len(splittings[i])-1):
+                slices[key_name][s] = X[key_name + "_%d" % s]
         
     # Plot generation
     setTeXPlot(sampling=2)
@@ -124,10 +118,7 @@ if __name__ == '__main__':
     bins = np.arange(1, maxrange, 2)
     mean_profile = None
     for i in range(len(keys)):
-        if callable(keys[i]):
-            key_name = keys[i].__name__
-        else:
-            key_name = keys[i]
+        key_name = keys[i]
         ax = fig.add_subplot(rows, min(maxcol, len(keys)), i+1)
         if mean_profile is None:
             mean_profile = makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name)
@@ -136,7 +127,7 @@ if __name__ == '__main__':
         if i/maxcol == rows-1:
             ax.set_xlabel('Radius [arcmin]')
         if i%maxcol == 0:
-            ax.set_ylabel(r'$\Delta\Sigma\ [10^{14} \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
+            ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
         else:
             ax.yaxis.set_major_formatter(NullFormatter())
 
