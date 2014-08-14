@@ -7,6 +7,7 @@ from sys import argv
 from os.path import exists
 from common import *
 from glob import glob
+from math import pi
 
 def getValues(data, key):
     # what values are used for the slices
@@ -21,6 +22,16 @@ def getSliceMask(values, lower, upper, return_num=False):
     else:
         return sum((values >= lower) & (values < upper))
 
+# get separation in deg for distance L in Mpc/h at redshift z
+# uses c/H0 = 3000 Mpc/h
+def Dist2Ang(L, z):
+    global cosmo
+    return L / cosmo.Da(z) / 3000. * 180./math.pi
+
+def Ang2Dist(theta, z):
+    global cosmo
+    return theta * cosmo.Da(z) * 3000. / 180. * math.pi
+
 if __name__ == '__main__':
     if len(argv) < 5:
         print "usage: " + argv[0] + " <lens catalog> <shape catalog> <band> <output label> [tmpdir]"
@@ -34,8 +45,13 @@ if __name__ == '__main__':
         tmpdir = argv[5]
     else:
         tmpdir = "/tmp/"
+    coords = "physical"
 
-    maxrange = 72.  # arcmin
+    if coords == "physical":
+        maxrange = 5. # Mpc/h
+    else:
+        maxrange = 0.5  # deg
+
     lens_z_key = 'Z_LAMBDA'
     shape_z_key = 'ZP'
     #keys = [shape_z_key, 'FLUX_RADIUS_' + band.upper(), 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_snr']
@@ -52,6 +68,8 @@ if __name__ == '__main__':
         lenses = hdu[1].data
         #good_cl = (lenses[lens_z_key] < 0.6)
         #lenses = lenses[good_cl]
+        if coords == "physical":
+            maxrange = Dist2Ang(maxrange, lenses[lens_z_key])
         print "lens sample: %d" % lenses.size
 
         # open shapes, apply post-run selections
@@ -68,7 +86,7 @@ if __name__ == '__main__':
             # CAVEAT: make sure to have enough space where you put the match file
             # it has 24 byte per match, which quickly becomes Gb's of data 
             h = eu.htm.HTM(8)
-            h.match(lenses['RA'], lenses['DEC'], shapes['ra'], shapes['dec'], maxrange/60, maxmatch=-1, file=matchfile)
+            h.match(lenses['RA'], lenses['DEC'], shapes['ra'], shapes['dec'], maxrange, maxmatch=-1, file=matchfile)
             del h
         else:
             print "  re-using existing matchfile", matchfile
@@ -138,7 +156,10 @@ if __name__ == '__main__':
             lower, upper = last_element['all'], last_element['all'] + len(m2)
             elements = np.arange(lower, upper, dtype='int64')
             DeltaSigma[lower:upper], DeltaSigma_cross[lower:upper] = sigma_crit * tangentialShear(shapes_lens['ra'], shapes_lens['dec'], shapes_lens['im3shape_' + band.lower() + '_e1'], -shapes_lens['im3shape_' + band.lower() + '_e2'], lens['RA'], lens['DEC'], computeB=True)
-            radius[lower:upper] = d12
+            if coords == "physical":
+                radius[lower:upper] = Ang2Dist(np.array(d12), lens[lens_z_key])
+            else:
+                radius[lower:upper] = d12
             weight[lower:upper] = 0.2/(0.2**2 + (0.1*20/shapes_lens['im3shape_' + band.lower() + '_snr'])**2)**0.5/sigma_crit**2
             last_element['all'] += len(m2)
 
@@ -171,7 +192,8 @@ if __name__ == '__main__':
         DeltaSigma_cross.resize((last_element['all']), refcheck=False)
         weight.resize((last_element['all']), refcheck=False)
         radius.resize((last_element['all']), refcheck=False)
-        radius *= 60 # distances now in arcmin
+        if coords != "physical":
+            radius *= 60 # distances now in arcmin
         for k,v in slices.iteritems():
             for vv in v.keys():
                 slices[k][vv].resize((last_element[k][vv]), refcheck=False)
@@ -193,9 +215,8 @@ if __name__ == '__main__':
         kwargs['keys'] = keynames
         np.savez(stackfile, **kwargs)
     else:
-        # load from previously saved file
         print "stackfile " + stackfile + " already exists."
-        print "Delete it are use different label to rerun this script."
+        print "Delete it or use different label to rerun this script."
         exit(0)
 
 
