@@ -86,11 +86,11 @@ if __name__ == '__main__':
     band = argv[1]
     label = argv[2]
     if len(argv) > 3:
-        tmpdir = argv[3]
+        indir = argv[3] + "/" + label
     else:
-        tmpdir = "/tmp/"
+        indir = "/tmp/" + label
 
-    stackfile = tmpdir + '/shear_stack_' + band.lower() + '_' + label + '.npz'
+    stackfile = indir + '/DeltaSigma.npy'
     plotfile = 'shear_stack_slices_' + band.lower() + '_' + label + '.pdf'
 
     if exists(stackfile) is False:
@@ -99,19 +99,20 @@ if __name__ == '__main__':
     else:
         # load from previously saved file
         print "loading from file", stackfile
-        X = np.load(stackfile)
-        DeltaSigma = X['DeltaSigma']
-        weight = X['weight']
-        radius = X['radius']
+        DeltaSigma = np.load(indir + '/DeltaSigma.npy')
+        weight = np.load(indir + '/weight.npy')
+        radius = np.load(indir + '/radius.npy')
         maxrange = np.ceil(radius.max())
-        keys = X['keys']
-        splittings = X['splittings']
+        keys = np.loadtxt(indir + '/keynames.txt', dtype='str')
+        splittings = np.load(indir + '/splittings.npy')
+        last_element = np.load(indir + '/last_element.npz')
         slices = {}
         for i in range(len(keys)):
             key_name = keys[i]
             slices[key_name] = {}
             for s in range(len(splittings[i])-1):
-                slices[key_name][s] = X[key_name + "_%d" % s]
+                slices[key_name][s] = np.load(indir + '/' + key_name + "_%d" % s + ".npy")
+
         
     # Plot generation
     setTeXPlot(sampling=2)

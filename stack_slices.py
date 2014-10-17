@@ -5,6 +5,7 @@ import esutil as eu
 import pyfits
 from sys import argv
 from os.path import exists
+from os import system
 from common import *
 from glob import glob
 from math import pi
@@ -22,6 +23,24 @@ def getSliceMask(values, lower, upper, return_num=False):
     else:
         return sum((values >= lower) & (values < upper))
 
+def saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splittings, slices, last_element):
+    np.save(outdir + "/DeltaSigma.npy", DeltaSigma[:last_element['all']])
+    np.save(outdir + "/DeltaSigma_cross.npy", DeltaSigma_cross[:last_element['all']])
+    np.save(outdir + "/weight.npy", weight[:last_element['all']])
+    np.save(outdir + "/radius.npy", radius[:last_element['all']])
+    keynames = []
+    for k in keys:
+        if callable(k):
+            key_name = k.__name__
+        else:
+            key_name = k
+        keynames.append(key_name)
+        for vv in slices[key_name].keys():
+            filename = key_name + "_%d" % vv + ".npy"
+            np.save(outdir + "/" + filename, slices[key_name][vv][:last_element[key_name][vv]])
+    np.save(outdir + "/splittings.npy", splittings)
+    np.savetxt(outdir + "/keynames.txt", keynames, fmt='%s')
+
 # get separation in deg for distance L in Mpc/h at redshift z
 # uses c/H0 = 3000 Mpc/h
 def Dist2Ang(L, z):
@@ -31,6 +50,9 @@ def Dist2Ang(L, z):
 def Ang2Dist(theta, z):
     global cosmo
     return theta * cosmo.Da(z) * 3000. / 180. * math.pi
+
+def B_D(data):
+    return data['im3shape_' + band.lower() + '_bulge_flux'] / data['im3shape_' + band.lower() + '_disc_flux']
 
 if __name__ == '__main__':
     if len(argv) < 5:
@@ -45,22 +67,32 @@ if __name__ == '__main__':
         tmpdir = argv[5]
     else:
         tmpdir = "/tmp/"
-    coords = "physical"
+    
+    coords = "angular"
+    lens_z_key = 'Z_LAMBDA'
+    shape_z_key = 'ZP'
+    shape_ra_key = 'ALPHAWIN_J2000_' + band.upper()
+    shape_dec_key = 'DELTAWIN_J2000_' + band.upper()
+    
+    # keys = [shape_z_key, 'im3shape_' + band.lower() + '_snr', 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_stamp_size']
+    # splittings = [[0.7, 0.9, 1.1, 1.5], [20,40,60,1000], [0.263,0.789,26.3], [32,48,64,128]]
+    
+    #keys = ['im3shape_' + band.lower() + '_info_flag']
+    #splittings = [[0,1,8,128,1024, 2**21]]
+
+    keys = ['im3shape_' + band.lower() + '_bulge_flux', 'im3shape_' + band.lower() + '_disc_flux', B_D, 'im3shape_' + band.lower() + '_mask_fraction']
+    splittings = [3, 3, 3, [0., 0.2, 0.4, 1]]
+    
+    outdir = tmpdir + "/" + label
+    system('mkdir -p ' + outdir)
 
     if coords == "physical":
         maxrange = 5. # Mpc/h
     else:
-        maxrange = 0.5  # deg
+        maxrange = 1.1  # deg
 
-    lens_z_key = 'Z_LAMBDA'
-    shape_z_key = 'ZP'
-    #keys = [shape_z_key, 'FLUX_RADIUS_' + band.upper(), 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_snr']
-    #splittings = [[0.7, 0.9, 1.1, 1.5], [1,3,5,100], [0.263,0.789,1.315,26.3], [5,10,20,40,100]]
-    keys = []
-    splittings = []
-
-    matchfile = tmpdir + '/matches_' + band.lower()  + '_' + label + '.bin'
-    stackfile = tmpdir + '/shear_stack_' + band.lower() + '_' + label + '.npz'
+    matchfile = outdir + '/matches_' + band.lower() + '.bin'
+    stackfile = outdir + "/DeltaSigma.npy"
 
     if exists(stackfile) is False:
         # open lens catalog, apply selection if desired
@@ -68,25 +100,25 @@ if __name__ == '__main__':
         lenses = hdu[1].data
         #good_cl = (lenses[lens_z_key] < 0.6)
         #lenses = lenses[good_cl]
+        
         if coords == "physical":
             maxrange = Dist2Ang(maxrange, lenses[lens_z_key])
         print "lens sample: %d" % lenses.size
 
         # open shapes, apply post-run selections
         shdu = pyfits.open(shapefile)
-        good_sh = ModestSG(shdu[1].data) & (shdu[1].data['im3shape_' + band.lower() + '_exists'] == 1) & ((shdu[1].data['im3shape_' + band.lower() + '_flag'] & (1+2+4+64+1024+2048)) == 0) & (shdu[1].data['im3shape_' + band.lower() + '_snr'] > 5) & (shdu[1].data['FLAGS_' + band.upper()] == 0)
+        good_sh = ModestSG(shdu[1].data) & (shdu[1].data['im3shape_' + band.lower() + '_exists'] == 1) & (shdu[1].data['im3shape_' + band.lower() + '_error_flag'] == 0) & (shdu[1].data['im3shape_' + band.lower() + '_info_flag'] == 0) & (shdu[1].data['FLAGS_' + band.upper()] == 0)
         shapes = shdu[1].data[good_sh]
         print "shape sample: %d" % shapes.size
 
-        # find all galaxies in shape catalog within maxranfe arcmin 
+        # find all galaxies in shape catalog within maxrange arcmin 
         # of each lens center
-        # NOTE: maxrange could be changed for each cluster when working in Mpc instead of arcmin
         print "matching lens and source catalog..."
         if exists(matchfile) is False:
             # CAVEAT: make sure to have enough space where you put the match file
             # it has 24 byte per match, which quickly becomes Gb's of data 
             h = eu.htm.HTM(8)
-            h.match(lenses['RA'], lenses['DEC'], shapes['ra'], shapes['dec'], maxrange, maxmatch=-1, file=matchfile)
+            h.match(lenses['RA'], lenses['DEC'], shapes[shape_ra_key], shapes[shape_dec_key], maxrange, maxmatch=-1, file=matchfile)
             del h
         else:
             print "  re-using existing matchfile", matchfile
@@ -126,8 +158,9 @@ if __name__ == '__main__':
                     # should be minimal for large stacks
                     # -> Check for the size of the contained before filling it!
                     slices[key_name][s] = np.zeros(Ngal/splittings[i], dtype='int64')
-                delta = 100./splittings[i]
-                ranges = [k*delta for k in range(splittings[i]+1)]
+                # remove 2.5% on either side to reduce impact of outliers
+                delta = 95./splittings[i]
+                ranges = [2.5 + k*delta for k in range(splittings[i]+1)]
                 splittings[i] = percentile(values, ranges)
                 del ranges
             del values
@@ -155,7 +188,7 @@ if __name__ == '__main__':
             # determine extent in DeltaSigma array
             lower, upper = last_element['all'], last_element['all'] + len(m2)
             elements = np.arange(lower, upper, dtype='int64')
-            DeltaSigma[lower:upper], DeltaSigma_cross[lower:upper] = sigma_crit * tangentialShear(shapes_lens['ra'], shapes_lens['dec'], shapes_lens['im3shape_' + band.lower() + '_e1'], -shapes_lens['im3shape_' + band.lower() + '_e2'], lens['RA'], lens['DEC'], computeB=True)
+            DeltaSigma[lower:upper], DeltaSigma_cross[lower:upper] = sigma_crit * tangentialShear(shapes_lens[shape_ra_key], shapes_lens[shape_dec_key], shapes_lens['im3shape_' + band.lower() + '_e1'], -shapes_lens['im3shape_' + band.lower() + '_e2'], lens['RA'], lens['DEC'], computeB=True)
             if coords == "physical":
                 radius[lower:upper] = Ang2Dist(np.array(d12), lens[lens_z_key])
             else:
@@ -183,8 +216,14 @@ if __name__ == '__main__':
                     del mask
                 del values
             del shapes_lens, elements, z_phot, cz, sigma_crit
+
+            # output status update and do backup
+            save_chunks = lenses.size / 10
             if counter % 100 == 0:
                 print '  lens %d, matched %.2f%%' % (counter, upper*100./htmf.n_matches)
+            if htmf.n_matches > 5e8 and counter > 0 and counter % save_chunks == 0:
+                print '  saving stack backup...'
+                saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splittings, slices, last_element)
             counter += 1
 
         # reduce the size of the containers to last_element
@@ -199,21 +238,9 @@ if __name__ == '__main__':
                 slices[k][vv].resize((last_element[k][vv]), refcheck=False)
 
         # save the entire shebang
-        print "saving stack file"
-        kwargs = {"DeltaSigma": DeltaSigma, "DeltaSigma_cross": DeltaSigma_cross, "weight": weight, "radius": radius}
-        keynames = []
-        for k in keys:
-            if callable(k):
-                key_name = k.__name__
-            else:
-                key_name = k
-            keynames.append(key_name)
-            for vv in slices[key_name].keys():
-                argname = key_name + "_%d" % vv
-                kwargs[argname] = slices[key_name][vv]
-        kwargs['splittings'] = splittings
-        kwargs['keys'] = keynames
-        np.savez(stackfile, **kwargs)
+        print "saving stack files"
+        saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splittings, slices, last_element)
+        
     else:
         print "stackfile " + stackfile + " already exists."
         print "Delete it or use different label to rerun this script."
