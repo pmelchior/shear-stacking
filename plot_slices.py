@@ -12,18 +12,6 @@ from common import *
 from glob import glob
 from matplotlib.ticker import NullFormatter
 
-def getValues(data, key):
-    # what values are used for the slices
-    if callable(key):
-        return key(data)
-    else:
-        return data[key]
-
-def getSliceMask(values, lower, upper, return_num=False):
-    if return_num is False:
-        return (values >= lower) & (values < upper)
-    else:
-        return sum((values >= lower) & (values < upper))
 
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
@@ -75,7 +63,7 @@ def makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittin
     pivot = (mean_q + std_q/2).max()
     ax.set_ylim(-0.15*pivot, 1.25*pivot)
     ax.set_xlim(xlim)
-    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
+    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
     return mean_r, n, mean_q, std_q
 
 if __name__ == '__main__':
@@ -101,18 +89,25 @@ if __name__ == '__main__':
         print "loading from file", stackfile
         DeltaSigma = np.load(indir + '/DeltaSigma.npy')
         weight = np.load(indir + '/weight.npy')
-        radius = np.load(indir + '/radius.npy')
+        if exists(indir + '/radius_physical.npy'):
+            coords = "physical"
+            radius = np.load(indir + '/radius_physical.npy') # Mpc/h
+        else:
+            coords = "angular"
+            #radius = np.load(indir + '/radius_angular.npy') * 60 # arcmin
+            radius = np.load(indir + '/radius.npy') * 60 # arcmin
         maxrange = np.ceil(radius.max())
         keys = np.loadtxt(indir + '/keynames.txt', dtype='str')
         splittings = np.load(indir + '/splittings.npy')
-        last_element = np.load(indir + '/last_element.npz')
+        if isinstance(keys, 'test'):
+            keys = [keys]
+            splittings = [splittings]
         slices = {}
         for i in range(len(keys)):
             key_name = keys[i]
             slices[key_name] = {}
             for s in range(len(splittings[i])-1):
                 slices[key_name][s] = np.load(indir + '/' + key_name + "_%d" % s + ".npy")
-
         
     # Plot generation
     setTeXPlot(sampling=2)
@@ -120,7 +115,10 @@ if __name__ == '__main__':
     maxcol = 4 # how many columns per row
     rows = (len(keys)-1)/maxcol + 1
     fig = plt.figure(figsize=(12, 4*rows))
-    bins = np.arange(1, maxrange, 2)
+    if coords == "physical":
+        bins = np.arange(0, 5, 0.5)
+    else:
+        bins = np.arange(1, maxrange, 5)
     mean_profile = None
     for i in range(len(keys)):
         key_name = keys[i]
@@ -130,7 +128,10 @@ if __name__ == '__main__':
         else:
             makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name, mean_profile=mean_profile)
         if i/maxcol == rows-1:
-            ax.set_xlabel('Radius [arcmin]')
+            if coords == "physical":
+                ax.set_xlabel('Radius [Mpc/$h$]')
+            else:
+                ax.set_xlabel('Radius [arcmin]')
         if i%maxcol == 0:
             ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
         else:

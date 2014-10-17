@@ -27,7 +27,10 @@ def saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splitt
     np.save(outdir + "/DeltaSigma.npy", DeltaSigma[:last_element['all']])
     np.save(outdir + "/DeltaSigma_cross.npy", DeltaSigma_cross[:last_element['all']])
     np.save(outdir + "/weight.npy", weight[:last_element['all']])
-    np.save(outdir + "/radius.npy", radius[:last_element['all']])
+    if coords == "physical":
+        np.save(outdir + "/radius_physical.npy", radius[:last_element['all']])
+    else:
+        np.save(outdir + "/radius_angular.npy", radius[:last_element['all']])
     keynames = []
     for k in keys:
         if callable(k):
@@ -77,11 +80,11 @@ if __name__ == '__main__':
     # keys = [shape_z_key, 'im3shape_' + band.lower() + '_snr', 'im3shape_' + band.lower() + '_radius', 'im3shape_' + band.lower() + '_stamp_size']
     # splittings = [[0.7, 0.9, 1.1, 1.5], [20,40,60,1000], [0.263,0.789,26.3], [32,48,64,128]]
     
-    #keys = ['im3shape_' + band.lower() + '_info_flag']
-    #splittings = [[0,1,8,128,1024, 2**21]]
+    keys = ['im3shape_' + band.lower() + '_info_flag']
+    splittings = [[0,1,8,128,1024, 2**21]]
 
-    keys = ['im3shape_' + band.lower() + '_bulge_flux', 'im3shape_' + band.lower() + '_disc_flux', B_D, 'im3shape_' + band.lower() + '_mask_fraction']
-    splittings = [3, 3, 3, [0., 0.2, 0.4, 1]]
+    # keys = ['im3shape_' + band.lower() + '_bulge_flux', 'im3shape_' + band.lower() + '_disc_flux', B_D, 'im3shape_' + band.lower() + '_mask_fraction']
+    # splittings = [3, 3, 3, [0., 0.2, 0.4, 1]]
     
     outdir = tmpdir + "/" + label
     system('mkdir -p ' + outdir)
@@ -107,7 +110,7 @@ if __name__ == '__main__':
 
         # open shapes, apply post-run selections
         shdu = pyfits.open(shapefile)
-        good_sh = ModestSG(shdu[1].data) & (shdu[1].data['im3shape_' + band.lower() + '_exists'] == 1) & (shdu[1].data['im3shape_' + band.lower() + '_error_flag'] == 0) & (shdu[1].data['im3shape_' + band.lower() + '_info_flag'] == 0) & (shdu[1].data['FLAGS_' + band.upper()] == 0)
+        good_sh = ModestSG(shdu[1].data) & (shdu[1].data['im3shape_' + band.lower() + '_exists'] == 1) & (shdu[1].data['im3shape_' + band.lower() + '_error_flag'] == 0) & (shdu[1].data['FLAGS_' + band.upper()] == 0)
         shapes = shdu[1].data[good_sh]
         print "shape sample: %d" % shapes.size
 
@@ -231,15 +234,13 @@ if __name__ == '__main__':
         DeltaSigma_cross.resize((last_element['all']), refcheck=False)
         weight.resize((last_element['all']), refcheck=False)
         radius.resize((last_element['all']), refcheck=False)
-        if coords != "physical":
-            radius *= 60 # distances now in arcmin
         for k,v in slices.iteritems():
             for vv in v.keys():
                 slices[k][vv].resize((last_element[k][vv]), refcheck=False)
 
         # save the entire shebang
         print "saving stack files"
-        saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splittings, slices, last_element)
+        saveStack(outdir, DeltaSigma, DeltaSigma_cross, radius, weight, keys, splittings, slices, last_element, coords)
         
     else:
         print "stackfile " + stackfile + " already exists."
