@@ -86,7 +86,7 @@ if __name__ == '__main__':
         exit(0)
     else:
         # load from previously saved file
-        print "loading from file", stackfile
+        print "loading DeltaSigma file", stackfile
         DeltaSigma = np.load(indir + '/DeltaSigma.npy')
         weight = np.load(indir + '/weight.npy')
         if exists(indir + '/radius_physical.npy'):
@@ -94,20 +94,15 @@ if __name__ == '__main__':
             radius = np.load(indir + '/radius_physical.npy') # Mpc/h
         else:
             coords = "angular"
-            #radius = np.load(indir + '/radius_angular.npy') * 60 # arcmin
-            radius = np.load(indir + '/radius.npy') * 60 # arcmin
+            radius = np.load(indir + '/radius_angular.npy') * 60 # arcmin
         maxrange = np.ceil(radius.max())
         keys = np.loadtxt(indir + '/keynames.txt', dtype='str')
         splittings = np.load(indir + '/splittings.npy')
-        if isinstance(keys, 'test'):
-            keys = [keys]
-            splittings = [splittings]
-        slices = {}
-        for i in range(len(keys)):
-            key_name = keys[i]
-            slices[key_name] = {}
-            for s in range(len(splittings[i])-1):
-                slices[key_name][s] = np.load(indir + '/' + key_name + "_%d" % s + ".npy")
+    
+        # fix loadtxt bug for single-element array
+        if keys.size == 1:
+            keys = [keys.item(0)]
+        
         
     # Plot generation
     setTeXPlot(sampling=2)
@@ -121,12 +116,20 @@ if __name__ == '__main__':
         bins = np.arange(1, maxrange, 5)
     mean_profile = None
     for i in range(len(keys)):
+        print "  " + keys[i]
         key_name = keys[i]
-        ax = fig.add_subplot(rows, min(maxcol, len(keys)), i+1)
+        ax = fig.add_subplot(rows, maxcol, i+1)
+
+        # load slice index vector
+        slices = {}
+        for s in range(len(splittings[i])-1):
+            slices[s] = np.load(indir + '/' + key_name + "_%d" % s + ".npy")
+
         if mean_profile is None:
-            mean_profile = makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name)
+            mean_profile = makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittings[i], key_name)
         else:
-            makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices[key_name], splittings[i], key_name, mean_profile=mean_profile)
+            makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittings[i], key_name, mean_profile=mean_profile)
+        del slices
         if i/maxcol == rows-1:
             if coords == "physical":
                 ax.set_xlabel('Radius [Mpc/$h$]')
