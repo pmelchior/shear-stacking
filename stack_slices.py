@@ -46,8 +46,9 @@ if __name__ == '__main__':
     
     basename = os.path.basename(shapefile)
     basename = basename.split(".")[0]
-    matchfile = outdir + basename + '_matches.bin'
     stackfile = outdir + basename + '_DeltaSigma.fits'
+    tmpstackfile = '/tmp/' + basename + '_DeltaSigma.fits'
+    matchfile = '/tmp/' + basename + '_matches.bin'
     configfile = outdir + 'config.json'
 
     if os.path.exists(configfile) is False:
@@ -89,22 +90,16 @@ if __name__ == '__main__':
         # find all galaxies in shape catalog within maxrange arcmin 
         # of each lens center
         print "matching lens and source catalog..."
-        if os.path.exists(matchfile) is False:
-            # CAVEAT: make sure to have enough space where you put the match file
-            # it has 24 byte per match, which quickly becomes Gb's of data 
-            h = eu.htm.HTM(8)
-            h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
-            del h
-        else:
-            print "  re-using existing matchfile", matchfile
-
+        h = eu.htm.HTM(8)
+        h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+        del h
         htmf = HTMFile(matchfile)
         Ngal = htmf.n_matches
         print "  found ", Ngal, "matches"
 
         # iterate over all lenses, write DeltaSigma, r, weight into file
         print "stacking lenses..."
-        fits = fitsio.FITS(stackfile, 'rw')
+        fits = fitsio.FITS(tmpstackfile, 'rw')
         specz_calib = getSpecZCalibration()
         counter = 0
         done = 0
@@ -148,11 +143,12 @@ if __name__ == '__main__':
             done += n_gal
 
         fits.close()
+        os.system('mv ' + tmpstackfile + ' ' + stackfile)
+        os.system('rm ' + matchfile)
         print "done. Created " + stackfile
 
     else:
         print "stackfile " + stackfile + " already exists."
-        print "Delete it or use different label to rerun this script."
         exit(0)
 
 
