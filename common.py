@@ -1,5 +1,6 @@
 import numpy as np
 from math import pi, sqrt
+import os
 
 def skyAngle(ra, dec, ra_ref, dec_ref):
     # CAUTION: this needs to be a pseudo-Cartesian coordinate frame
@@ -85,7 +86,8 @@ def getSigmaCrit(z_c, z):
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
 def getSpecZCalibration():
-    return np.loadtxt('data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
+    thisdir = os.path.dirname(os.path.realpath(__file__))
+    return np.loadtxt(thisdir + '/data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
 
 def getSigmaCritCorrection(specz_calib, z_c):
     z_phot = 0.05 + 0.1*np.arange(20)
