@@ -53,16 +53,11 @@ if __name__ == '__main__':
     if os.path.exists(configfile) is False:
         print "configfile " + configfile + " does not exist!"
         exit(0)
-    else:
-        print "opening configfile " + configfile
-        fp = open(configfile)
-        config = json.load(fp)
-        fp.close()
 
-    if config['coords'] == "physical":
-        maxrange = 5. # Mpc/h
-    else:
-        maxrange = 1.1  # deg
+    print "opening configfile " + configfile
+    fp = open(configfile)
+    config = json.load(fp)
+    fp.close()
 
     if os.path.exists(stackfile) is False:
         # open lens catalog, apply selection if desired
@@ -76,6 +71,7 @@ if __name__ == '__main__':
             del mask
         print "lens sample: %d" % lenses.size
         
+        maxrange = config['maxrange']
         if config['coords'] == "physical":
             maxrange = Dist2Ang(maxrange, lenses[lens_z_key])
 

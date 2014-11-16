@@ -1,46 +1,72 @@
-from numpy import *
+import numpy as np
 from math import pi, sqrt
 
 def skyAngle(ra, dec, ra_ref, dec_ref):
     # CAUTION: this needs to be a pseudo-Cartesian coordinate frame
     # (not pure RA/DEC), otherwise angles are skewed
-    return arctan2(dec-dec_ref, (ra-ra_ref)*cos(dec*pi/180))
+    return np.arctan2(dec-dec_ref, (ra-ra_ref)*np.cos(dec*pi/180))
 
 def skyDistance(ra, dec, ra_ref, dec_ref):
     # CAUTION: this needs to be a pseudo-Cartesian coordinate frame
     # (not pure RA/DEC), otherwise distances are skewed
-    return (((ra-ra_ref)*cos(dec*pi/180))**2 + (dec-dec_ref)**2)**0.5
+    return (((ra-ra_ref)*np.cos(dec*pi/180))**2 + (dec-dec_ref)**2)**0.5
 
 def tangentialShear(ra, dec, e1, e2, ra_ref, dec_ref, computeB=False):
     # RA/Dec is a left-handed coordinate frame
     # but it needs to be right-handed, hence the minus sign
     phi = skyAngle(ra, dec, ra_ref, dec_ref)
     if computeB is False:
-        return -e1*cos(2*phi) - e2*sin(2*phi)
+        return -e1*np.cos(2*phi) - e2*np.sin(2*phi)
     else:
-        return -e1*cos(2*phi) - e2*sin(2*phi), e1*sin(2*phi) - e2*cos(2*phi)
+        return -e1*np.cos(2*phi) - e2*np.sin(2*phi), e1*np.sin(2*phi) - e2*np.cos(2*phi)
 
-def scalarProfile(bins, r, q, weight):
-    mean_q = zeros(len(bins)-1)
-    std_q = zeros(len(bins)-1)
-    mean_r = zeros(len(bins)-1)
-    n = zeros(len(bins)-1, dtype='int64')
-    for i in range(len(bins)-1):
-        mask = (r >= bins[i]) & (r < bins[i+1])
-        n[i] = sum(mask)
-        V1 = weight[mask].sum()
-        mean_r[i] = (r[mask]*weight[mask]).sum()/V1
-        mean_q[i] = (q[mask]*weight[mask]).sum()/V1
-        # CAUTION: assumes Gaussian errors and large samples
-        # replace with Jackknife/Bootstrap estimate!
-        std_q[i] = ((weight[mask]*(q[mask]-mean_q[i])**2).sum()/V1)**0.5/sqrt(sum(mask))
-    return mean_r, n, mean_q, std_q
+# CAUTION: assumes Gaussian errors and large samples
+# replace with Jackknife/Bootstrap estimate for more accurate errors
+class WeightedMeanVar:
+    def __init__(self):
+        self.N = 0
+        self.Wi = 0.
+        self.WiXi = 0.
+        self.WiXi2 = 0.
+    def getMean(self):
+        return self.WiXi / self.Wi
+    def getVariance(self):
+        return (self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N-1.) * self.Wi)
+    def insert(self, X, W):
+        self.N += X.size
+        self.Wi += W.sum()
+        self.WiXi += (W*X).sum()
+        self.WiXi2 += (W*X**2).sum()
+
+class BinnedScalarProfile:
+    def __init__(self, bins):
+        self.bins = bins
+        self.Q = [] # binned quantity
+        self.R = [] # center of radial bins
+        for i in range(len(self.bins)-1):
+            self.Q.append(WeightedMeanVar())
+            self.R.append(0.)
+    def insert(self, R, Q, W):
+        for i in range(len(self.bins)-1):
+            mask = (R >= self.bins[i]) & (R < self.bins[i+1])
+            self.Q[i].insert(Q[mask], W[mask])
+            self.R[i] += R[mask].sum()
+            del mask
+    def getProfile(self):
+        mean_q = np.empty(len(self.bins)-1)
+        std_q = np.empty(len(self.bins)-1)
+        n = np.empty(len(self.bins)-1, dtype='uint64')
+        for i in range(len(self.bins)-1):
+            n[i] = self.Q[i].N
+            mean_q[i] = self.Q[i].getMean()
+            std_q[i] = self.Q[i].getVariance()**0.5
+        return np.array(self.R) / n, n, mean_q, std_q
 
 # extrapolation function from
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range
 def extrap(x, xp, yp):
     """np.interp function with linear extrapolation"""
-    y = interp(x, xp, yp)
+    y = np.interp(x, xp, yp)
     y[x < xp[0]] = yp[0] + (x[x<xp[0]]-xp[0]) * (yp[0]-yp[1]) / (xp[0]-xp[1])
     y[x > xp[-1]]= yp[-1] + (x[x>xp[-1]]-xp[-1])*(yp[-1]-yp[-2])/(xp[-1]-xp[-2])
     return y  
@@ -59,20 +85,20 @@ def getSigmaCrit(z_c, z):
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
 def getSpecZCalibration():
-    return loadtxt('data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
+    return np.loadtxt('data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
 
 def getSigmaCritCorrection(specz_calib, z_c):
-    z_phot = 0.05 + 0.1*arange(20)
+    z_phot = 0.05 + 0.1*np.arange(20)
     above = z_phot > z_c
     z_phot = z_phot[above]
-    cz = zeros_like(z_phot)
+    cz = np.zeros_like(z_phot)
     for i in range(len(z_phot)):
         z_s = z_phot[i]
-        mask = abs(specz_calib[:,0] - z_s) < 0.01
+        mask = np.abs(specz_calib[:,0] - z_s) < 0.01
         SigmaCrit_ = getSigmaCrit(z_c, z_s)
         z_spec = specz_calib[:,1][mask]
         prob = specz_calib[:,2][mask]
-        for j in range(len(z_spec)):
+        for j in xrange(len(z_spec)):
             if z_spec[j] > z_c:
                 cz[i] += prob[j]*getSigmaCrit(z_c, z_spec[j])**-1
         cz[i] = cz[i]**-1
@@ -92,6 +118,14 @@ def SNRadius(data):
 # Eli's modest S/G classification
 def ModestSG(data):
     return invert(((data['CLASS_STAR_I'] > 0.3) & (data['MAG_AUTO_I'] < 18.0)) | ((data['SPREAD_MODEL_I'] + 3*data['SPREADERR_MODEL_I'] < 0.003) | ((data['MAG_PSF_I'] > 30.0) & (data['MAG_AUTO_I'] < 21.0)))) & (abs(data['SPREAD_MODEL_I']) < 0.1)  &  (data['FLAGS_I'] <= 3)
+
+# bulge/disk flux ratio
+def B_D(data, band='r'):
+    return data['im3shape_' + band.lower() + '_bulge_flux'] / data['im3shape_' + band.lower() + '_disc_flux']
+
+# SNR-dependent weights for im3shape
+def SNR_weight(data, band='r'):
+    return 0.2/(0.2**2 + (0.1*20/data['im3shape_' + band.lower() + '_snr'])**2)**0.5
 
 from struct import unpack
 class HTMFile:
