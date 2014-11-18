@@ -30,14 +30,21 @@ class WeightedMeanVar:
         self.WiXi = 0.
         self.WiXi2 = 0.
     def getMean(self):
-        return self.WiXi / self.Wi
-    def getVariance(self):
-        return (self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N-1.) * self.Wi)
+        if self.Wi > 0:
+            return self.WiXi / self.Wi
+        else:
+            return None
+    def getStd(self):
+        if self.Wi > 0:
+            return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N-1.) * self.Wi))**0.5
+        else:
+            return None
     def insert(self, X, W):
-        self.N += X.size
-        self.Wi += W.sum()
-        self.WiXi += (W*X).sum()
-        self.WiXi2 += (W*X**2).sum()
+        if X.size:
+            self.N += X.size
+            self.Wi += W.sum()
+            self.WiXi += (W*X).sum()
+            self.WiXi2 += (W*X**2).sum()
 
 class BinnedScalarProfile:
     def __init__(self, bins):
@@ -60,7 +67,7 @@ class BinnedScalarProfile:
         for i in range(len(self.bins)-1):
             n[i] = self.Q[i].N
             mean_q[i] = self.Q[i].getMean()
-            std_q[i] = self.Q[i].getVariance()**0.5
+            std_q[i] = self.Q[i].getStd()
         return np.array(self.R) / n, n, mean_q, std_q
 
 # extrapolation function from

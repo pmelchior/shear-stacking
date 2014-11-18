@@ -94,58 +94,58 @@ if __name__ == '__main__':
         h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
         del h
         htmf = HTMFile(matchfile)
-        Ngal = htmf.n_matches
-        print "  found ", Ngal, "matches"
+        Nmatch = htmf.n_matches
+        print "  found ", Nmatch, "matches"
 
         # iterate over all lenses, write DeltaSigma, r, weight into file
-        print "stacking lenses..."
-        fits = fitsio.FITS(tmpstackfile, 'rw')
-        specz_calib = getSpecZCalibration()
-        counter = 0
-        done = 0
-        for m1, m2, d12 in htmf.matches():
-            lens = lenses[m1]
-            shapes_lens = shapes[m2]
-            n_gal = shapes_lens.size
+        if Nmatch:
+            print "stacking lenses..."
+            fits = fitsio.FITS(tmpstackfile, 'rw')
+            specz_calib = getSpecZCalibration()
+            counter = 0
+            for m1, m2, d12 in htmf.matches():
+                lens = lenses[m1]
+                shapes_lens = shapes[m2]
+                n_gal = shapes_lens.size
 
-            # compute effective Sigma_crit
-            z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
-            sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
-            # determine extent in DeltaSigma array
-            data = np.empty(shapes_lens.size, dtype=[('radius', 'f8'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('weight', 'f8'), ('slices', 'S%d' % len(config['splittings']))])
-            data['DeltaSigma'], data['DeltaSigma_x'] = sigma_crit * tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
-            if config['coords'] == "physical":
-                data['radius'] = Ang2Dist(np.array(d12), lens[lens_z_key])
-            else:
-                data['radius'] = d12
-            data['weight'] = getValues(shapes_lens, config['shape_weight_key'])/sigma_crit**2
-
-            # get indices for all sources in each slice
-            for key, limit in config['splittings'].iteritems():
-                slice_str = np.repeat('-', n_gal)
-                values = getValues(shapes_lens, key)
-                for s in xrange(len(limit)-1):
-                    mask = getSliceMask(values, limit[s], limit[s+1])
-                    slice_str[mask] = '%d' % s
-                    del mask
-                if key == config['splittings'].keys()[0]:
-                    data['slices'] = slice_str
+                # compute effective Sigma_crit
+                z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
+                sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
+                # determine extent in DeltaSigma array
+                data = np.empty(n_gal, dtype=[('radius', 'f8'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+                data['DeltaSigma'], data['DeltaSigma_x'] = sigma_crit * tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
+                if config['coords'] == "physical":
+                    data['radius'] = Ang2Dist(np.array(d12), lens[lens_z_key])
                 else:
-                    data['slices'] = np.core.defchararray.add(data['slices'], slice_str)
-                del values, slice_str
-            
-            # write out results
-            if counter == 0:
-                fits.write(data)
-            else:
-                fits[-1].append(data)
-            counter += 1
-            done += n_gal
+                    data['radius'] = d12
+                data['weight'] = getValues(shapes_lens, config['shape_weight_key'])/sigma_crit**2
 
-        fits.close()
-        os.system('mv ' + tmpstackfile + ' ' + stackfile)
+                # get indices for all sources in each slice
+                i = 0
+                for key, limit in config['splittings'].iteritems():
+                    data['slices'][:,i] = -1 # null value
+                    values = getValues(shapes_lens, key)
+                    for s in xrange(len(limit)-1):
+                        mask = getSliceMask(values, limit[s], limit[s+1])
+                        data['slices'][:,i][mask] = s
+                        del mask
+                    i += 1
+                    del values
+
+                # write out results
+                if counter == 0:
+                    fits.write(data)
+                else:
+                    fits[-1].append(data)
+                counter += 1
+                del data
+
+            fits.close()
+            os.system('cp ' + tmpstackfile + ' ' + stackfile)
+            print "done. Created " + stackfile
         os.system('rm ' + matchfile)
-        print "done. Created " + stackfile
+        hdu.close()
+        shdu.close()
 
     else:
         print "stackfile " + stackfile + " already exists."

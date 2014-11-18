@@ -1,17 +1,15 @@
 #!/bin/env python
 
+import os, json, fitsio
 import matplotlib
 matplotlib.use('agg')
 import pylab as plt
 import numpy as np
 import esutil as eu
-import pyfits
 from sys import argv
-from os.path import exists
 from common import *
 from glob import glob
 from matplotlib.ticker import NullFormatter
-
 
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
@@ -35,117 +33,137 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
-def makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittings, key_name, lw=1, mean_profile=None):
+def makeEBProfile(ax, bins, key_name, profile_E, profile_B, coords, lw=1):
     xlim = [bins[0], bins[-1] + 2]
     ax.plot(xlim, [0,0], 'k:')
     if plt.matplotlib.rcParams['text.usetex']:
         label = r'\texttt{' + key_name.replace("_", "\_") + '}'
     else:
         label = key_name
-    if mean_profile is None:
-        mean_r, n, mean_q, std_q = scalarProfile(bins, radius, DeltaSigma, weight)
+    mean_r, n, mean_q, std_q = profile_B.getProfile()
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='E-mode', lw=lw)
+    mean_r, n, mean_q, std_q = profile_E.getProfile()
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)  
+    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
+    ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
+    if coords == "physical":
+        ax.set_xlabel('Radius [Mpc/$h$]')
     else:
-        mean_r, n, mean_q, std_q = mean_profile
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label=label, lw=lw)
+        ax.set_xlabel('Radius [arcmin]')
+    return mean_r, n, mean_q, std_q
+    
+
+def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
+    xlim = [bins[0], bins[-1] + 2]
+    ax.plot(xlim, [0,0], 'k:')
+    if plt.matplotlib.rcParams['text.usetex']:
+        label = r'\texttt{' + key_name.replace("_", "\_") + '}'
+    else:
+        label = key_name
 
     # make the profile for each split
-    colors = getColors(len(splittings))
-    for s in range(len(splittings)-1):
+    colors = getColors(len(limits))
+    for s in range(len(limits)-1):
         string = '$\in ['
-        if isinstance(splittings[s], (int, long)):
+        if isinstance(limits[s], (int, long)):
             string += '%d, %d)$'
         else:
             string += '%.2f, %.2f)$'
-        label = string % (splittings[s], splittings[s+1])
-        if slices[s].size:
-            mean_r_, n_, mean_q_, std_q_ = scalarProfile(bins, radius[slices[s]], DeltaSigma[slices[s]], weight[slices[s]])
-            ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
-    pivot = (mean_q + std_q/2).max()
-    ax.set_ylim(-0.15*pivot, 1.25*pivot)
+        label = string % (limits[s], limits[s+1])
+        mean_r_, n_, mean_q_, std_q_ = profiles[s].getProfile()
+        ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
     ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
-    return mean_r, n, mean_q, std_q
+    ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
+    if coords == "physical":
+        ax.set_xlabel('Radius [Mpc/$h$]')
+    else:
+        ax.set_xlabel('Radius [arcmin]')
 
 if __name__ == '__main__':
-    if len(argv) < 3:
-        print "usage: " + argv[0] + " <band> <output label> [tmpdir]"
-        exit(1)
+    if len(argv) < 2:
+        print "usage: " + argv[0] +  "<config file> [outdir]"
+        exit(0)
 
-    band = argv[1]
-    label = argv[2]
-    if len(argv) > 3:
-        indir = argv[3] + "/" + label
+    configfile = argv[1]
+    if os.path.exists(configfile) is False:
+        print "configfile " + configfile + " does not exist!"
+        exit(0)
+
+    print "opening configfile " + configfile
+    fp = open(configfile)
+    config = json.load(fp)
+
+    if len(argv) > 2:
+        outdir = argv[2]
     else:
-        indir = "/tmp/" + label
+        outdir = os.path.dirname(configfile)
+    if outdir[-1] != '/':
+        outdir += '/'
 
-    stackfile = indir + '/DeltaSigma.npy'
-    plotfile = 'shear_stack_slices_' + band.lower() + '_' + label + '.pdf'
-
-    if exists(stackfile) is False:
+    stackfiles = glob(outdir + '*_DeltaSigma.fits')[::2]
+    if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         exit(0)
+
+    if config['coords'] == "physical":
+        bins = np.arange(0, config['maxrange'], 0.5)
     else:
-        # load from previously saved file
-        print "loading DeltaSigma file", stackfile
-        DeltaSigma = np.load(indir + '/DeltaSigma.npy')
-        weight = np.load(indir + '/weight.npy')
-        if exists(indir + '/radius_physical.npy'):
-            coords = "physical"
-            radius = np.load(indir + '/radius_physical.npy') # Mpc/h
-        else:
-            coords = "angular"
-            radius = np.load(indir + '/radius_angular.npy') * 60 # arcmin
-        maxrange = np.ceil(radius.max())
-        keys = np.loadtxt(indir + '/keynames.txt', dtype='str')
-        splittings = np.load(indir + '/splittings.npy')
-    
-        # fix loadtxt bug for single-element array
-        if keys.size == 1:
-            keys = [keys.item(0)]
+        bins = np.arange(1, config['maxrange']*60, 5)
+
+    # set up containers
+    profile = {'all_E': BinnedScalarProfile(bins),
+               'all_B': BinnedScalarProfile(bins)
+               }
+    for key, limit in config['splittings'].iteritems():
+        profile[key] = []
+        for s in xrange(len(limit)-1):
+            profile[key].append(BinnedScalarProfile(bins))
+    keys = config['splittings'].keys()
+
+    # iterate thru all DeltaSigma files
+    for stackfile in stackfiles:
+        print "opening file " + stackfile
+        fits = fitsio.FITS(stackfile)
+        data = fits[1].read()
+
+        if config['coords'] == "angular":
+            data['radius'] *= 60
         
+        # total profiles (E and B mode)
+        profile['all_E'].insert(data['radius'], data['DeltaSigma'], data['weight'])
+        profile['all_B'].insert(data['radius'], data['DeltaSigma_x'], data['weight'])
+        # get index list of matching objects from each splitting
+        i = 0
+        for key, limit in config['splittings'].iteritems():
+            for s in xrange(len(limit)-1):
+                mask = (data['slices'][:,i] == s)
+                profile[key][s].insert(data['radius'][mask], data['DeltaSigma'][mask], data['weight'][mask])
+                del mask
+            i += 1
+
+        # clean up
+        fits.close()
+        del data
         
     # Plot generation
+    plotfile = outdir + 'shear_stack_EB.pdf'
     setTeXPlot(sampling=2)
-    print "generating plots..."
-    maxcol = 4 # how many columns per row
-    rows = (len(keys)-1)/maxcol + 1
-    fig = plt.figure(figsize=(12, 4*rows))
-    if coords == "physical":
-        bins = np.arange(0, 5, 0.5)
-    else:
-        bins = np.arange(1, maxrange, 5)
-    mean_profile = None
-    for i in range(len(keys)):
-        print "  " + keys[i]
-        key_name = keys[i]
-        ax = fig.add_subplot(rows, maxcol, i+1)
-
-        # load slice index vector
-        slices = {}
-        for s in range(len(splittings[i])-1):
-            slices[s] = np.load(indir + '/' + key_name + "_%d" % s + ".npy")
-
-        if mean_profile is None:
-            mean_profile = makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittings[i], key_name)
-        else:
-            makeSlicedProfilePlot(ax, bins, radius, DeltaSigma, weight, slices, splittings[i], key_name, mean_profile=mean_profile)
-        del slices
-        if i/maxcol == rows-1:
-            if coords == "physical":
-                ax.set_xlabel('Radius [Mpc/$h$]')
-            else:
-                ax.set_xlabel('Radius [arcmin]')
-        if i%maxcol == 0:
-            ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
-        else:
-            ax.yaxis.set_major_formatter(NullFormatter())
-
-    # size of the bottom margin
-    if rows == 1:
-        bottom = 0.13
-    else:
-        bottom = 0.07
-    plt.subplots_adjust(wspace=0, hspace=0, left=0.07, bottom=bottom, right=0.99, top=0.97)
-    plt.savefig(plotfile)
-    print "done. open", plotfile
+    fig = plt.figure(figsize=(5, 4))
+    ax = fig.add_subplot(111)
+    mean_r, n, mean_q, std_q = makeEBProfile(ax, bins, 'all', profile['all_E'], profile['all_B'], config['coords'])
+    pivot = (mean_q + std_q/2).max()
+    ylim = (-0.15*pivot, 1.25*pivot)
+    ax.set_ylim(ylim)
+    fig.subplots_adjust(wspace=0, hspace=0, left=0.13, bottom=0.13, right=0.97, top=0.97)
+    fig.savefig(plotfile)
+    for key, limit in config['splittings'].iteritems():
+        print "  " + key
+        plotfile = outdir + 'shear_stack_' + key + '.pdf'
+        fig = plt.figure(figsize=(5, 4))
+        ax = fig.add_subplot(111)
+        makeSlicedProfile(ax, bins, key, profile[key], config['splittings'][key], config['coords'], ylim)
+        fig.subplots_adjust(wspace=0, hspace=0, left=0.13, bottom=0.13, right=0.97, top=0.97)
+        fig.savefig(plotfile)
 
