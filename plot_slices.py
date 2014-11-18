@@ -43,7 +43,8 @@ def makeEBProfile(ax, bins, key_name, profile_E, profile_B, coords, lw=1):
     mean_r, n, mean_q, std_q = profile_B.getProfile()
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='E-mode', lw=lw)
     mean_r, n, mean_q, std_q = profile_E.getProfile()
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)  
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)
+    ax.set_xlim(xlim)
     ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
@@ -102,7 +103,7 @@ if __name__ == '__main__':
     if outdir[-1] != '/':
         outdir += '/'
 
-    stackfiles = glob(outdir + '*_DeltaSigma.fits')[::2]
+    stackfiles = glob(outdir + '*_DeltaSigma.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         exit(0)
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     pivot = (mean_q + std_q/2).max()
     ylim = (-0.15*pivot, 1.25*pivot)
     ax.set_ylim(ylim)
-    fig.subplots_adjust(wspace=0, hspace=0, left=0.13, bottom=0.13, right=0.97, top=0.97)
+    fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
     fig.savefig(plotfile)
     for key, limit in config['splittings'].iteritems():
         print "  " + key
@@ -164,6 +165,6 @@ if __name__ == '__main__':
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
         makeSlicedProfile(ax, bins, key, profile[key], config['splittings'][key], config['coords'], ylim)
-        fig.subplots_adjust(wspace=0, hspace=0, left=0.13, bottom=0.13, right=0.97, top=0.97)
+        fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
         fig.savefig(plotfile)
 
