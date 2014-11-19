@@ -25,7 +25,7 @@ def tangentialShear(ra, dec, e1, e2, ra_ref, dec_ref, computeB=False):
 # replace with Jackknife/Bootstrap estimate for more accurate errors
 class WeightedMeanVar:
     def __init__(self):
-        self.N = 0
+        self.N = 0.
         self.Wi = 0.
         self.WiXi = 0.
         self.WiXi2 = 0.
@@ -36,7 +36,7 @@ class WeightedMeanVar:
             return None
     def getStd(self):
         if self.Wi > 0:
-            return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N-1.) * self.Wi))**0.5
+            return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.Wi))**0.5
         else:
             return None
     def insert(self, X, W):
@@ -45,6 +45,12 @@ class WeightedMeanVar:
             self.Wi += W.sum()
             self.WiXi += (W*X).sum()
             self.WiXi2 += (W*X**2).sum()
+    def __iadd__(self, other):
+        self.N += other.N
+        self.Wi += other.Wi
+        self.WiXi += other.WiXi
+        self.WiXi2 += other.WiXi2
+        return self
 
 class BinnedScalarProfile:
     def __init__(self, bins):
@@ -54,6 +60,14 @@ class BinnedScalarProfile:
         for i in range(len(self.bins)-1):
             self.Q.append(WeightedMeanVar())
             self.R.append(0.)
+    def __iadd__(self, other):
+        if len(self.R) == len(other.R):
+            for i in range(len(self.bins)-1):
+                self.Q[i] += other.Q[i]
+                self.R[i] += other.R[i]
+            return self
+        else:
+            raise AssertionError("Profiles do not have the same length.")
     def insert(self, R, Q, W):
         for i in range(len(self.bins)-1):
             mask = (R >= self.bins[i]) & (R < self.bins[i+1])
@@ -63,7 +77,7 @@ class BinnedScalarProfile:
     def getProfile(self):
         mean_q = np.empty(len(self.bins)-1)
         std_q = np.empty(len(self.bins)-1)
-        n = np.empty(len(self.bins)-1, dtype='uint64')
+        n = np.empty(len(self.bins)-1)
         for i in range(len(self.bins)-1):
             n[i] = self.Q[i].N
             mean_q[i] = self.Q[i].getMean()

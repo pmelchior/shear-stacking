@@ -141,9 +141,5 @@ if __name__ == '__main__':
         os.system('rm ' + matchfile)
         hdu.close()
         shdu.close()
-        exit(0)
     else:
         print "stackfile " + stackfile + " already exists."
-        exit(0)
-
-

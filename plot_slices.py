@@ -1,6 +1,6 @@
 #!/bin/env python
 
-import os, json, fitsio
+import os, json, fitsio, copy
 import matplotlib
 matplotlib.use('agg')
 import pylab as plt
@@ -9,7 +9,7 @@ import esutil as eu
 from sys import argv
 from common import *
 from glob import glob
-from matplotlib.ticker import NullFormatter
+from multiprocessing import Pool
 
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
@@ -82,6 +82,31 @@ def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
     else:
         ax.set_xlabel('Radius [arcmin]')
 
+def readNbin(stackfile, profile):
+    print "opening file " + stackfile
+    fits = fitsio.FITS(stackfile)
+    data = fits[1].read()
+
+    if config['coords'] == "angular":
+        data['radius'] *= 60
+
+    # total profiles (E and B mode)
+    profile['all_E'].insert(data['radius'], data['DeltaSigma'], data['weight'])
+    profile['all_B'].insert(data['radius'], data['DeltaSigma_x'], data['weight'])
+    # get index list of matching objects from each splitting
+    i = 0
+    for key, limit in config['splittings'].iteritems():
+        for s in xrange(len(limit)-1):
+            mask = (data['slices'][:,i] == s)
+            profile[key][s].insert(data['radius'][mask], data['DeltaSigma'][mask], data['weight'][mask])
+            del mask
+        i += 1
+
+    # clean up
+    fits.close()
+    del data
+    return profile
+
 if __name__ == '__main__':
     if len(argv) < 2:
         print "usage: " + argv[0] +  "<config file> [outdir]"
@@ -121,32 +146,19 @@ if __name__ == '__main__':
         profile[key] = []
         for s in xrange(len(limit)-1):
             profile[key].append(BinnedScalarProfile(bins))
+    initprofile = copy.deepcopy(profile)
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    for stackfile in stackfiles:
-        print "opening file " + stackfile
-        fits = fitsio.FITS(stackfile)
-        data = fits[1].read()
-
-        if config['coords'] == "angular":
-            data['radius'] *= 60
-        
-        # total profiles (E and B mode)
-        profile['all_E'].insert(data['radius'], data['DeltaSigma'], data['weight'])
-        profile['all_B'].insert(data['radius'], data['DeltaSigma_x'], data['weight'])
-        # get index list of matching objects from each splitting
-        i = 0
-        for key, limit in config['splittings'].iteritems():
+    pool = Pool(processes=6)
+    results = [pool.apply_async(readNbin, (stackfile, initprofile)) for stackfile in stackfiles]
+    for r in results:
+        thisprofile = r.get()
+        profile['all_E'] += thisprofile['all_E']
+        profile['all_B'] += thisprofile['all_B']
+        for key, limit  in config['splittings'].iteritems():
             for s in xrange(len(limit)-1):
-                mask = (data['slices'][:,i] == s)
-                profile[key][s].insert(data['radius'][mask], data['DeltaSigma'][mask], data['weight'][mask])
-                del mask
-            i += 1
-
-        # clean up
-        fits.close()
-        del data
+                profile[key][s] += thisprofile[key][s] 
         
     # Plot generation
     plotfile = outdir + 'shear_stack_EB.pdf'

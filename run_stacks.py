@@ -3,6 +3,7 @@
 import os, json
 from sys import argv
 from glob import glob
+from time import sleep
 
 if len(argv) < 2:
     print "usage: " + argv[0] + " <config file> [outdir]"
@@ -38,6 +39,5 @@ for shapefile in shapefiles:
     if os.path.exists(stackfile) is False and os.path.exists(lockfile) is False:
         print basename
         os.system('hostname > ' + lockfile)
-        os.popen('python ' + thisdir +'/stack_slices.py ' + lensfile + " " + shapefile + " " + outdir + " >> " + lockfile)
-        os.system('rm ' + lockfile)
+        os.popen('python ' + thisdir +'/stack_slices.py ' + lensfile + " " + shapefile + " " + outdir + " 1>&2 >> " + lockfile + " && rm " + lockfile)
 
