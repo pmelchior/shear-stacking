@@ -12,10 +12,10 @@ Virtually all aspects of the script can be controlled from a config file, in jso
 {
         "coords": "angular",
         "maxrange": 1.1,
-        "lens_catalog": "/n/des/pmelchior/des/SV/catalogs/redmapper/sva1_gold_1.0.2_redmapper_v6.2.12_lgt5_desformat_catalog.fit",
+        "lens_catalog": "/catalogs/redmapper/sva1_gold_1.0.2_redmapper_v6.2.12_lgt5_desformat_catalog.fit",
         "lens_cuts": [],
         "lens_z_key": "Z_LAMBDA",
-        "shape_dir": "/des/SV/catalogs/im3shapev7_ngmix009/",
+        "shape_dir": "/catalogs/im3shapev7_ngmix009/",
         "shape_z_key": "ZP",
         "shape_ra_key": "ALPHAWIN_J2000_R",
         "shape_dec_key": "DELTAWIN_J2000_R",
@@ -29,7 +29,7 @@ Virtually all aspects of the script can be controlled from a config file, in jso
         ],
         "splittings": {
                 "FLAGS_I": [0, 1, 2, 4],
-		"ZP": [0.7, 0.9, 1.1, 1.5]
+	        "ZP": [0.7, 0.9, 1.1, 1.5]
         }
 }
 ```
