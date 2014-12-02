@@ -89,17 +89,17 @@ def readNbin(stackfile, profile):
     data = fits[1].read()
 
     if config['coords'] == "angular":
-        data['radius'] *= 60
+        data['radius_angular'] *= 60
 
     # total profiles (E and B mode)
-    profile['all_E'].insert(data['radius'], data['DeltaSigma'], data['weight'])
-    profile['all_B'].insert(data['radius'], data['DeltaSigma_x'], data['weight'])
+    profile['all_E'].insert(data['radius_' + config['coords']], data['DeltaSigma'], data['weight'])
+    profile['all_B'].insert(data['radius_' + config['coords']], data['DeltaSigma_x'], data['weight'])
     # get index list of matching objects from each splitting
     i = 0
     for key, limit in config['splittings'].iteritems():
         for s in xrange(len(limit)-1):
             mask = (data['slices'][:,i] == s)
-            profile[key][s].insert(data['radius'][mask], data['DeltaSigma'][mask], data['weight'][mask])
+            profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask])
             del mask
         i += 1
 
