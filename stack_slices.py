@@ -101,7 +101,7 @@ if __name__ == '__main__':
         if Nmatch:
             print "stacking lenses..."
             fits = fitsio.FITS(tmpstackfile, 'rw')
-            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
             specz_calib = getSpecZCalibration()
             done = 0
             for m1, m2, d12 in htmf.matches():
@@ -112,11 +112,27 @@ if __name__ == '__main__':
                 # compute effective Sigma_crit
                 z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
                 sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
-                # determine extent in DeltaSigma array
-                
-                data['DeltaSigma'][done:done+n_gal], data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
+                # compute tangential and cross shear
+                if config['shape_e1_key'].find('im3shape') != -1:
+                    # correction for addition offsets from NBC
+                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']] - shapes_lens['im3shape_r_nbc_c1'], shapes_lens[config['shape_e2_key']] - shapes_lens['im3shape_r_nbc_c2'], lens['RA'], lens['DEC'], computeB=True)
+                if config['shape_e1_key'].find('ngmix') != -1:
+                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
+                try:
+                    gt
+                except NameError:
+                    print "Only shape measurements for im3shape or ngmix are supported"
+
+                data['DeltaSigma'][done:done+n_gal] = sigma_crit * gt
+                data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * gx
                 data['radius_angular'][done:done+n_gal] = d12
                 data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
+
+                # compute sensitivity and weights
+                if config['shape_e1_key'].find('im3shape') != -1:
+                    data['sensitivity'][done:done+n_gal] = 1 + shapes_lens['im3shape_r_nbc_m']
+                if config['shape_e1_key'].find('ngmix') != -1:
+                    data['sensitivity'][done:done+n_gal] = 0.5*(shapes_lens['ngmix010_EXP_E_SENS_1'] + shapes_lens['ngmix010_EXP_E_SENS_2'])
                 data['weight'][done:done+n_gal] = getValues(shapes_lens, config['shape_weight_key'])/sigma_crit**2
 
                 # get indices for all sources in each slice
@@ -131,6 +147,7 @@ if __name__ == '__main__':
                     i += 1
                     del values
                 done += n_gal
+                del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
 
             fits.write(data)
             fits.close()

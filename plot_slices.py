@@ -92,14 +92,14 @@ def readNbin(stackfile, profile):
         data['radius_angular'] *= 60
 
     # total profiles (E and B mode)
-    profile['all_E'].insert(data['radius_' + config['coords']], data['DeltaSigma'], data['weight'])
-    profile['all_B'].insert(data['radius_' + config['coords']], data['DeltaSigma_x'], data['weight'])
+    profile['all_E'].insert(data['radius_' + config['coords']], data['DeltaSigma'], data['weight'], data['sensitivity'])
+    profile['all_B'].insert(data['radius_' + config['coords']], data['DeltaSigma_x'], data['weight'], data['sensitivity'])
     # get index list of matching objects from each splitting
     i = 0
     for key, limit in config['splittings'].iteritems():
         for s in xrange(len(limit)-1):
             mask = (data['slices'][:,i] == s)
-            profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask])
+            profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask], data['sensitivity'][mask])
             del mask
         i += 1
 

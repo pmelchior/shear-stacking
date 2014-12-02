@@ -13,13 +13,11 @@ def skyDistance(ra, dec, ra_ref, dec_ref):
     return (((ra-ra_ref)*np.cos(dec*pi/180))**2 + (dec-dec_ref)**2)**0.5
 
 def tangentialShear(ra, dec, e1, e2, ra_ref, dec_ref, computeB=False):
-    # RA/Dec is a left-handed coordinate frame
-    # but it needs to be right-handed, hence the minus sign
     phi = skyAngle(ra, dec, ra_ref, dec_ref)
     if computeB is False:
-        return -e1*np.cos(2*phi) - e2*np.sin(2*phi)
+        return -e1*np.cos(2*phi) + e2*np.sin(2*phi)
     else:
-        return -e1*np.cos(2*phi) - e2*np.sin(2*phi), e1*np.sin(2*phi) - e2*np.cos(2*phi)
+        return -e1*np.cos(2*phi) + e2*np.sin(2*phi), e1*np.sin(2*phi) + e2*np.cos(2*phi)
 
 # CAUTION: assumes Gaussian errors and large samples
 # replace with Jackknife/Bootstrap estimate for more accurate errors
@@ -29,27 +27,40 @@ class WeightedMeanVar:
         self.Wi = 0.
         self.WiXi = 0.
         self.WiXi2 = 0.
+        self.WiSi = 0.
     def getMean(self):
         if self.Wi > 0:
-            return self.WiXi / self.Wi
+            if self.WiSi > 0:
+                return self.WiXi / self.WiSi
+            else:
+                return self.WiXi / self.Wi
         else:
             return None
     def getStd(self):
         if self.Wi > 0:
-            return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.Wi))**0.5
+            if self.WiSi > 0:
+                # this is not entirely correct since we ignore the extra variance 
+                # in the sensitivity itself
+                # again: use bootstraps of the mean for more accurate errors
+                return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.WiSi))**0.5
+            else:
+                return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.Wi))**0.5
         else:
             return None
-    def insert(self, X, W):
+    def insert(self, X, W, S=None):
         if X.size:
             self.N += X.size
             self.Wi += W.sum()
             self.WiXi += (W*X).sum()
             self.WiXi2 += (W*X**2).sum()
+            if S is not None:
+                self.WiSi += (W*S).sum()
     def __iadd__(self, other):
         self.N += other.N
         self.Wi += other.Wi
         self.WiXi += other.WiXi
         self.WiXi2 += other.WiXi2
+        self.WiSi += other.WiSi
         return self
 
 class BinnedScalarProfile:
@@ -57,28 +68,31 @@ class BinnedScalarProfile:
         self.bins = bins
         self.Q = [] # binned quantity
         self.R = [] # center of radial bins
-        for i in range(len(self.bins)-1):
+        for i in xrange(len(self.bins)-1):
             self.Q.append(WeightedMeanVar())
             self.R.append(0.)
     def __iadd__(self, other):
         if len(self.R) == len(other.R):
-            for i in range(len(self.bins)-1):
+            for i in xrange(len(self.bins)-1):
                 self.Q[i] += other.Q[i]
                 self.R[i] += other.R[i]
             return self
         else:
             raise AssertionError("Profiles do not have the same length.")
-    def insert(self, R, Q, W):
-        for i in range(len(self.bins)-1):
+    def insert(self, R, Q, W, S=None):
+        for i in xrange(len(self.bins)-1):
             mask = (R >= self.bins[i]) & (R < self.bins[i+1])
-            self.Q[i].insert(Q[mask], W[mask])
+            if S is None:
+                self.Q[i].insert(Q[mask], W[mask])
+            else:
+                self.Q[i].insert(Q[mask], W[mask], S[mask])
             self.R[i] += R[mask].sum()
             del mask
     def getProfile(self):
         mean_q = np.empty(len(self.bins)-1)
         std_q = np.empty(len(self.bins)-1)
         n = np.empty(len(self.bins)-1)
-        for i in range(len(self.bins)-1):
+        for i in xrange(len(self.bins)-1):
             n[i] = self.Q[i].N
             mean_q[i] = self.Q[i].getMean()
             std_q[i] = self.Q[i].getStd()
