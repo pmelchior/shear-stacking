@@ -74,7 +74,7 @@ if __name__ == '__main__':
         
         maxrange = config['maxrange']
         if config['coords'] == "physical":
-            maxrange = Dist2Ang(maxrange, lenses[lens_z_key])
+            maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
 
         # open shapes, apply post-run selections
         shdu = fitsio.FITS(shapefile)
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         if Nmatch:
             print "stacking lenses..."
             fits = fitsio.FITS(tmpstackfile, 'rw')
-            data = np.empty(Nmatch, dtype=[('radius', 'f8'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
             specz_calib = getSpecZCalibration()
             done = 0
             for m1, m2, d12 in htmf.matches():
@@ -115,10 +115,8 @@ if __name__ == '__main__':
                 # determine extent in DeltaSigma array
                 
                 data['DeltaSigma'][done:done+n_gal], data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
-                if config['coords'] == "physical":
-                    data['radius'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[lens_z_key])
-                else:
-                    data['radius'][done:done+n_gal] = d12
+                data['radius_angular'][done:done+n_gal] = d12
+                data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
                 data['weight'][done:done+n_gal] = getValues(shapes_lens, config['shape_weight_key'])/sigma_crit**2
 
                 # get indices for all sources in each slice

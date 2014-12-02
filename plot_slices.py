@@ -29,7 +29,7 @@ def getColors(split):
         colors.insert(1, (0.62745098039215685, 0.61568627450980395, 0.91764705882352937, 1.0))
         colors.insert(2, (0.7803921568627451, 0.7803921568627451, 0.7803921568627451, 1.0))
         colors.insert(3, (0.93333333333333335, 0.53725490196078429, 0.50980392156862742, 1.0))
-    if split > 5:
+    if split > 6:
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
@@ -45,7 +45,7 @@ def makeEBProfile(ax, bins, key_name, profile_E, profile_B, coords, lw=1):
     mean_r, n, mean_q, std_q = profile_E.getProfile()
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)
     ax.set_xlim(xlim)
-    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
+    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
@@ -58,9 +58,9 @@ def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
     xlim = [bins[0], bins[-1] + 2]
     ax.plot(xlim, [0,0], 'k:')
     if plt.matplotlib.rcParams['text.usetex']:
-        label = r'\texttt{' + key_name.replace("_", "\_") + '}'
+        title = r'\texttt{' + key_name.replace("_", "\_") + '}'
     else:
-        label = key_name
+        title = key_name
 
     # make the profile for each split
     colors = getColors(len(limits))
@@ -75,7 +75,8 @@ def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
         ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='x-small')
+    legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
+    plt.setp(legend.get_title(),fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
@@ -136,7 +137,7 @@ if __name__ == '__main__':
     if config['coords'] == "physical":
         bins = np.arange(0, config['maxrange'], 0.5)
     else:
-        bins = np.arange(1, config['maxrange']*60, 5)
+        bins = np.arange(0, 10, 1) # np.arange(1, config['maxrange']*60, 5)
 
     # set up containers
     profile = {'all_E': BinnedScalarProfile(bins),
@@ -161,7 +162,7 @@ if __name__ == '__main__':
                 profile[key][s] += thisprofile[key][s] 
         
     # Plot generation
-    plotfile = outdir + 'shear_stack_EB.pdf'
+    plotfile = outdir + 'shear_stack_EB.png'
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
@@ -173,7 +174,7 @@ if __name__ == '__main__':
     fig.savefig(plotfile)
     for key, limit in config['splittings'].iteritems():
         print "  " + key
-        plotfile = outdir + 'shear_stack_' + key + '.pdf'
+        plotfile = outdir + 'shear_stack_' + key + '.png'
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
         makeSlicedProfile(ax, bins, key, profile[key], config['splittings'][key], config['coords'], ylim)
