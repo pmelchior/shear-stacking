@@ -33,9 +33,7 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
-def makeEBProfile(ax, bins, key_name, profile_E, profile_B, coords, lw=1):
-    xlim = [bins[0], bins[-1] + 2]
-    ax.plot(xlim, [0,0], 'k:')
+def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
     if plt.matplotlib.rcParams['text.usetex']:
         label = r'\texttt{' + key_name.replace("_", "\_") + '}'
     else:
@@ -44,19 +42,25 @@ def makeEBProfile(ax, bins, key_name, profile_E, profile_B, coords, lw=1):
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='E-mode', lw=lw)
     mean_r, n, mean_q, std_q = profile_E.getProfile()
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)
-    ax.set_xlim(xlim)
+
+    xlim = ax.get_xlim()
+    if coords == "angular":
+        ax.plot(xlim, [0,0], 'k:')
+        ax.set_xlim(xlim)
     ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
+        ax.set_xscale('symlog')
+        ax.set_yscale('symlog', linthreshy=1e-3)
     else:
         ax.set_xlabel('Radius [arcmin]')
     return mean_r, n, mean_q, std_q
     
 
-def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
-    xlim = [bins[0], bins[-1] + 2]
-    ax.plot(xlim, [0,0], 'k:')
+def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
+    if coords == "angular":
+        ax.plot(xlim, [0,0], 'k:')
     if plt.matplotlib.rcParams['text.usetex']:
         title = r'\texttt{' + key_name.replace("_", "\_") + '}'
     else:
@@ -80,6 +84,8 @@ def makeSlicedProfile(ax, bins, key_name, profiles, limits, coords, ylim, lw=1):
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
+        ax.set_xscale('symlog')
+        ax.set_yscale('symlog', linthreshy=1e-3)
     else:
         ax.set_xlabel('Radius [arcmin]')
 
@@ -135,9 +141,9 @@ if __name__ == '__main__':
         exit(0)
 
     if config['coords'] == "physical":
-        bins = np.arange(0, config['maxrange'], 0.5)
+        bins =  np.arange(0, config['maxrange'], 2) # np.exp(0.3883*np.arange(-5, 12))
     else:
-        bins = np.arange(0, 10, 1) # np.arange(1, config['maxrange']*60, 5)
+        bins = np.arange(1, config['maxrange']*60, 2)
 
     # set up containers
     profile = {'all_E': BinnedScalarProfile(bins),
@@ -166,9 +172,16 @@ if __name__ == '__main__':
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
-    mean_r, n, mean_q, std_q = makeEBProfile(ax, bins, 'all', profile['all_E'], profile['all_B'], config['coords'])
+    mean_r, n, mean_q, std_q = makeEBProfile(ax, 'all', profile['all_E'], profile['all_B'], config['coords'])
     pivot = (mean_q + std_q/2).max()
-    ylim = (-0.15*pivot, 1.25*pivot)
+    if config['coords'] == "physical":
+        min_positive = mean_q[mean_q > 0].min()
+        ylim = (min_positive, 1.25*pivot)
+        xlim = [mean_r[0]*0.9, mean_r[-1]*2]
+    else:
+        ylim = (-0.15*pivot, 1.25*pivot)
+        xlim = ax.get_xlim()
+    ax.set_ylim(xlim)
     ax.set_ylim(ylim)
     fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
     fig.savefig(plotfile)
@@ -177,7 +190,7 @@ if __name__ == '__main__':
         plotfile = outdir + 'shear_stack_' + key + '.png'
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, bins, key, profile[key], config['splittings'][key], config['coords'], ylim)
+        makeSlicedProfile(ax, key, profile[key], config['splittings'][key], config['coords'], xlim, ylim)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
         fig.savefig(plotfile)
 
