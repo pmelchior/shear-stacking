@@ -39,9 +39,9 @@ def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
     else:
         label = key_name
     mean_r, n, mean_q, std_q = profile_B.getProfile()
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='E-mode', lw=lw)
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='B-mode', lw=lw)
     mean_r, n, mean_q, std_q = profile_E.getProfile()
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='B-mode', lw=lw)
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='E-mode', lw=lw)
 
     xlim = ax.get_xlim()
     if coords == "angular":
@@ -51,8 +51,10 @@ def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
-        ax.set_xscale('symlog')
+        ax.set_xscale('symlog', linthreshx=1e-2)
+        ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
         ax.set_yscale('symlog', linthreshy=1e-3)
+        ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
     else:
         ax.set_xlabel('Radius [arcmin]')
     return mean_r, n, mean_q, std_q
@@ -84,8 +86,10 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
-        ax.set_xscale('symlog')
+        ax.set_xscale('symlog', linthreshx=1e-2)
+        ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
         ax.set_yscale('symlog', linthreshy=1e-3)
+        ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
     else:
         ax.set_xlabel('Radius [arcmin]')
 
@@ -141,7 +145,7 @@ if __name__ == '__main__':
         exit(0)
 
     if config['coords'] == "physical":
-        bins =  np.arange(0, config['maxrange'], 2) # np.exp(0.3883*np.arange(-5, 12))
+        bins =  np.exp(0.3883*np.arange(-10, 10))
     else:
         bins = np.arange(1, config['maxrange']*60, 2)
 
@@ -157,7 +161,7 @@ if __name__ == '__main__':
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    pool = Pool(processes=6)
+    pool = Pool(processes=8)
     results = [pool.apply_async(readNbin, (stackfile, initprofile)) for stackfile in stackfiles]
     for r in results:
         thisprofile = r.get()
@@ -167,30 +171,31 @@ if __name__ == '__main__':
             for s in xrange(len(limit)-1):
                 profile[key][s] += thisprofile[key][s] 
         
-    # Plot generation
+    # Plot generation: E/B profile
     plotfile = outdir + 'shear_stack_EB.png'
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
     mean_r, n, mean_q, std_q = makeEBProfile(ax, 'all', profile['all_E'], profile['all_B'], config['coords'])
-    pivot = (mean_q + std_q/2).max()
+    pivot = (mean_q + std_q/2)[n > 0].max()
     if config['coords'] == "physical":
-        min_positive = mean_q[mean_q > 0].min()
-        ylim = (min_positive, 1.25*pivot)
-        xlim = [mean_r[0]*0.9, mean_r[-1]*2]
+        xlim = (1e-2, mean_r[n > 0].max()*2)
+        ylim = (1e-3, 2*pivot)
     else:
-        ylim = (-0.15*pivot, 1.25*pivot)
         xlim = ax.get_xlim()
-    ax.set_ylim(xlim)
+        ylim = (-0.15*pivot, 1.25*pivot)
+    ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
+    fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
     fig.savefig(plotfile)
+
+    # sliced profile plots
     for key, limit in config['splittings'].iteritems():
         print "  " + key
         plotfile = outdir + 'shear_stack_' + key + '.png'
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
         makeSlicedProfile(ax, key, profile[key], config['splittings'][key], config['coords'], xlim, ylim)
-        fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.97, top=0.97)
+        fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         fig.savefig(plotfile)
 

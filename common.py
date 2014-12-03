@@ -92,11 +92,16 @@ class BinnedScalarProfile:
         mean_q = np.empty(len(self.bins)-1)
         std_q = np.empty(len(self.bins)-1)
         n = np.empty(len(self.bins)-1)
+        r = np.empty(len(self.bins)-1)
         for i in xrange(len(self.bins)-1):
             n[i] = self.Q[i].N
+            if n[i] > 0:
+                r[i] = self.R[i] / n[i]
+            else:
+                r[i] = None
             mean_q[i] = self.Q[i].getMean()
             std_q[i] = self.Q[i].getStd()
-        return np.array(self.R) / n, n, mean_q, std_q
+        return r, n, mean_q, std_q
 
 # extrapolation function from
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range
