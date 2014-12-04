@@ -71,12 +71,15 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
     # make the profile for each split
     colors = getColors(len(limits))
     for s in range(len(limits)-1):
-        string = '$\in ['
+        label = '$\in ['
         if isinstance(limits[s], (int, long)):
-            string += '%d, %d)$'
+            label += '%d, ' % limits[s]
         else:
-            string += '%.2f, %.2f)$'
-        label = string % (limits[s], limits[s+1])
+            label += '%.2f, ' % limits[s]
+        if isinstance(limits[s+1], (int, long)):
+            label += '%d)$' % limits[s+1]
+        else:
+            label += '%.2f)$' % limits[s+1]
         mean_r_, n_, mean_q_, std_q_ = profiles[s].getProfile()
         ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
@@ -147,7 +150,7 @@ if __name__ == '__main__':
     if config['coords'] == "physical":
         bins =  np.exp(0.3883*np.arange(-10, 10))
     else:
-        bins = np.arange(1, config['maxrange']*60, 2)
+        bins = np.arange(1,11,1) #config['maxrange']*60, 2)
 
     # set up containers
     profile = {'all_E': BinnedScalarProfile(bins),
@@ -161,7 +164,7 @@ if __name__ == '__main__':
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    pool = Pool(processes=8)
+    pool = Pool(processes=6)
     results = [pool.apply_async(readNbin, (stackfile, initprofile)) for stackfile in stackfiles]
     for r in results:
         thisprofile = r.get()
