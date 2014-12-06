@@ -112,7 +112,6 @@ def extrap(x, xp, yp):
     y[x > xp[-1]]= yp[-1] + (x[x>xp[-1]]-xp[-1])*(yp[-1]-yp[-2])/(xp[-1]-xp[-2])
     return y  
 
-
 from galsim import Cosmology
 cosmo = Cosmology()
 def getBeta(z_c, z):
@@ -148,26 +147,6 @@ def getSigmaCritCorrection(specz_calib, z_c):
 
 def getSigmaCritEffective(z_phot, cz, z):
     return extrap(z, z_phot, cz)
-
-# radius of galaxy compared to PSF
-def sizeRatio(data):
-    return 2*data['RADIUS'] / (data['PSF_FWHM'] * 0.263)
-
-# approximation of SNR of the size (instead of the flux)
-def SNRadius(data):
-    return data['SNR'] * data['RADIUS']
-
-# Eli's modest S/G classification
-def ModestSG(data):
-    return invert(((data['CLASS_STAR_I'] > 0.3) & (data['MAG_AUTO_I'] < 18.0)) | ((data['SPREAD_MODEL_I'] + 3*data['SPREADERR_MODEL_I'] < 0.003) | ((data['MAG_PSF_I'] > 30.0) & (data['MAG_AUTO_I'] < 21.0)))) & (abs(data['SPREAD_MODEL_I']) < 0.1)  &  (data['FLAGS_I'] <= 3)
-
-# bulge/disk flux ratio
-def B_D(data, band='r'):
-    return data['im3shape_' + band.lower() + '_bulge_flux'] / data['im3shape_' + band.lower() + '_disc_flux']
-
-# SNR-dependent weights for im3shape
-def SNR_weight(data, band='r'):
-    return 0.2/(0.2**2 + (0.1*20/data['im3shape_' + band.lower() + '_snr'])**2)**0.5
 
 from struct import unpack
 class HTMFile:

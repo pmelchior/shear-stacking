@@ -2,19 +2,20 @@
 
 import numpy as np
 import esutil as eu
-import os
+import os, errno
 from sys import argv
 from common import *
 import math 
 import fitsio
 import json
+from glob import glob
 
-def getValues(data, key):
-    # what values are used for the slices
-    if key in globals():
-        return eval(key)(data)
+def getValues(s, key, functions):
+    # what values are used for the slices: functions are direct columns?
+    if key in functions.keys():
+        return eval(functions[key])
     else:
-        return data[key]
+        return s[key]
 
 def getSliceMask(values, lower, upper, return_num=False):
     if return_num is False:
@@ -33,128 +34,134 @@ def Ang2Dist(theta, z):
     return theta * cosmo.Da(z) * 3000. / 180. * math.pi
 
 if __name__ == '__main__':
-    if len(argv) < 4:
-        print "usage: " + argv[0] + " <lens catalog> <shape catalog> <output dir>"
-        exit(1)
+    # parse inputs
+    try:
+        configfile = argv[1]
+    except IndexError:
+        print "usage: " + argv[0] + " <config file> [shape file]"
 
-    lensfile = argv[1]
-    shapefile = argv[2]
-    outdir = argv[3]
-    os.system('mkdir -p ' + outdir)
+    try:
+        fp = open(configfile)
+        print "opening configfile " + configfile
+        config = json.load(fp)
+        fp.close()
+    except IOError:
+        print "configfile " + configfile + " does not exist!"
+
+    lensfile = config['lens_catalog']
+    outdir = os.path.dirname(configfile)
     if outdir[-1] != '/':
         outdir += '/'
+    try:
+        os.makedirs(outdir)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
+            pass
+        else: raise
     
-    basename = os.path.basename(shapefile)
-    basename = basename.split(".")[0]
-    stackfile = outdir + basename + '_DeltaSigma.fits'
-    tmpstackfile = '/tmp/' + basename + '_DeltaSigma.fits'
-    matchfile = '/tmp/' + basename + '_matches.bin'
-    configfile = outdir + 'config.json'
-
-    if os.path.exists(configfile) is False:
-        print "configfile " + configfile + " does not exist!"
-        exit(0)
-
-    print "opening configfile " + configfile
-    fp = open(configfile)
-    config = json.load(fp)
-    fp.close()
-
-    if os.path.exists(stackfile) is False:
-        # open lens catalog, apply selection if desired
-        hdu = fitsio.FITS(lensfile)
-        if len(config['lens_cuts']) == 0:
-            lenses = hdu[1][:]
-        else:
-            cuts = " && ".join(config['lens_cuts'])
-            mask = hdu[1].where(cuts)
-            lenses = hdu[1][mask]
-            del mask
-        print "lens sample: %d" % lenses.size
-        
-        maxrange = config['maxrange']
-        if config['coords'] == "physical":
-            maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
-
-        # open shapes, apply post-run selections
-        shdu = fitsio.FITS(shapefile)
-        if len(config['shape_cuts']) == 0:
-            shapes = hdu[1][:]
-        else:
-            cuts = " && ".join(config['shape_cuts'])
-            mask = shdu[1].where(cuts)
-            shapes = shdu[1][mask]
-            del mask
-        print "shape sample: %d" % shapes.size
-
-        # find all galaxies in shape catalog within maxrange arcmin 
-        # of each lens center
-        print "matching lens and source catalog..."
-        h = eu.htm.HTM(8)
-        h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
-        del h
-        htmf = HTMFile(matchfile)
-        Nmatch = htmf.n_matches
-        print "  found ", Nmatch, "matches"
-
-        # iterate over all lenses, write DeltaSigma, r, weight into file
-        if Nmatch:
-            print "stacking lenses..."
-            fits = fitsio.FITS(tmpstackfile, 'rw')
-            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
-            specz_calib = getSpecZCalibration()
-            done = 0
-            for m1, m2, d12 in htmf.matches():
-                lens = lenses[m1]
-                shapes_lens = shapes[m2]
-                n_gal = shapes_lens.size
-
-                # compute effective Sigma_crit
-                z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
-                sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
-                # compute tangential and cross shear
-                if config['shape_e1_key'].find('im3shape') != -1:
-                    # correction for addition offsets from NBC
-                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']] - shapes_lens['im3shape_r_nbc_c1'], shapes_lens[config['shape_e2_key']] - shapes_lens['im3shape_r_nbc_c2'], lens['RA'], lens['DEC'], computeB=True)
-                if config['shape_e1_key'].find('ngmix') != -1:
-                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], shapes_lens[config['shape_e1_key']], -shapes_lens[config['shape_e2_key']], lens['RA'], lens['DEC'], computeB=True)
-                try:
-                    gt
-                except NameError:
-                    print "Only shape measurements for im3shape or ngmix are supported"
-
-                data['DeltaSigma'][done:done+n_gal] = sigma_crit * gt
-                data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * gx
-                data['radius_angular'][done:done+n_gal] = d12
-                data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
-
-                # compute sensitivity and weights
-                if config['shape_e1_key'].find('im3shape') != -1:
-                    data['sensitivity'][done:done+n_gal] = 1 + shapes_lens['im3shape_r_nbc_m']
-                if config['shape_e1_key'].find('ngmix') != -1:
-                    data['sensitivity'][done:done+n_gal] = 0.5*(shapes_lens['ngmix010_EXP_E_SENS_1'] + shapes_lens['ngmix010_EXP_E_SENS_2'])
-                data['weight'][done:done+n_gal] = getValues(shapes_lens, config['shape_weight_key'])/sigma_crit**2
-
-                # get indices for all sources in each slice
-                i = 0
-                for key, limit in config['splittings'].iteritems():
-                    data['slices'][done:done+n_gal][:,i] = -1 # null value
-                    values = getValues(shapes_lens, key)
-                    for s in xrange(len(limit)-1):
-                        mask = getSliceMask(values, limit[s], limit[s+1])
-                        data['slices'][done:done+n_gal][:,i][mask] = s
-                        del mask
-                    i += 1
-                    del values
-                done += n_gal
-                del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
-
-            fits.write(data)
-            fits.close()
-            os.system('mv ' + tmpstackfile + ' ' + stackfile)
-            print "done. Created " + stackfile
-        os.system('rm ' + matchfile)
-        hdu.close()
-        shdu.close()
+    if len(argv) > 2:
+        shapefiles = [argv[2]]
     else:
-        print "stackfile " + stackfile + " already exists."
+        shapefiles = glob(config['shape_files'])
+
+    # open all matching files
+    for shapefile in shapefiles:
+        print shapefile
+        basename = os.path.basename(shapefile)
+        basename = basename.split(".")[0]
+        stackfile = outdir + basename + '_DeltaSigma.fits'
+        tmpstackfile = '/tmp/' + basename + '_DeltaSigma.fits'
+        lockfile = outdir + basename + ".lock"
+        tmplockfile = '/tmp/' + basename + ".lock"
+        matchfile = '/tmp/' + basename + '_matches.bin'
+
+        if True:#os.path.exists(stackfile) is False and os.path.exists(lockfile) is False and os.path.exists(lockfile) is False:
+
+            # create the locks to prevent other processes from doing the same file
+            os.system('hostname > ' + tmplockfile) # same machine
+            os.system('hostname > ' + lockfile)    # across machines
+
+            # open lens catalog, apply selection if desired
+            hdu = fitsio.FITS(lensfile)
+            if len(config['lens_cuts']) == 0:
+                lenses = hdu[1][:]
+            else:
+                cuts = " && ".join(config['lens_cuts'])
+                mask = hdu[1].where(cuts)
+                lenses = hdu[1][mask]
+                del mask
+            print "lens sample: %d" % lenses.size
+
+            maxrange = config['maxrange']
+            if config['coords'] == "physical":
+                maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
+
+            # open shapes, apply post-run selections
+            shdu = fitsio.FITS(shapefile)
+            if len(config['shape_cuts']) == 0:
+                shapes = shdu[1][:]
+            else:
+                cuts = " && ".join(config['shape_cuts'])
+                mask = shdu[1].where(cuts)
+                shapes = shdu[1][mask]
+                del mask
+            print "shape sample: %d" % shapes.size
+
+            # find all galaxies in shape catalog within maxrange arcmin 
+            # of each lens center
+            print "matching lens and source catalog..."
+            h = eu.htm.HTM(8)
+            h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+            htmf = HTMFile(matchfile)
+            Nmatch = htmf.n_matches
+            print "  found ", Nmatch, "matches"
+
+            # iterate over all lenses, write DeltaSigma, r, weight into file
+            if Nmatch:
+                print "stacking lenses..."
+                fits = fitsio.FITS(tmpstackfile, 'rw')
+                data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+                specz_calib = getSpecZCalibration()
+                done = 0
+                for m1, m2, d12 in htmf.matches():
+                    lens = lenses[m1]
+                    shapes_lens = shapes[m2]
+                    n_gal = shapes_lens.size
+
+                    # compute effective Sigma_crit
+                    z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
+                    sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
+                    # compute tangential and cross shear
+                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
+
+                    data['DeltaSigma'][done:done+n_gal] = sigma_crit * gt
+                    data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * gx
+                    data['radius_angular'][done:done+n_gal] = d12
+                    data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
+
+                    # compute sensitivity and weights
+                    data['sensitivity'][done:done+n_gal] = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
+                    data['weight'][done:done+n_gal] = getValues(shapes_lens, config['shape_weight_key'], config['functions'])/sigma_crit**2
+
+                    # get indices for all sources in each slice
+                    i = 0
+                    for key, limit in config['splittings'].iteritems():
+                        data['slices'][done:done+n_gal][:,i] = -1 # null value
+                        values = getValues(shapes_lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            mask = getSliceMask(values, limit[s], limit[s+1])
+                            data['slices'][done:done+n_gal][:,i][mask] = s
+                            del mask
+                        i += 1
+                        del values
+                    done += n_gal
+                    del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
+
+                fits.write(data)
+                fits.close()
+                os.system('mv ' + tmpstackfile + ' ' + stackfile)
+                os.system('rm ' + tmplockfile + ' ' + lockfile)
+                print "done. Created " + stackfile
+            os.system('rm ' + matchfile)
+            hdu.close()
+            shdu.close()
