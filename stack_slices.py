@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     # open all matching files
     for shapefile in shapefiles:
-        print shapefile
+        print "opening " + shapefile
         basename = os.path.basename(shapefile)
         basename = basename.split(".")[0]
         stackfile = outdir + basename + '_DeltaSigma.fits'
@@ -75,7 +75,7 @@ if __name__ == '__main__':
         tmplockfile = '/tmp/' + basename + ".lock"
         matchfile = '/tmp/' + basename + '_matches.bin'
 
-        if True:#os.path.exists(stackfile) is False and os.path.exists(lockfile) is False and os.path.exists(lockfile) is False:
+        if os.path.exists(stackfile) is False and os.path.exists(lockfile) is False and os.path.exists(lockfile) is False:
 
             # create the locks to prevent other processes from doing the same file
             os.system('hostname > ' + tmplockfile) # same machine
@@ -92,7 +92,7 @@ if __name__ == '__main__':
                 del mask
             print "lens sample: %d" % lenses.size
 
-            maxrange = config['maxrange']
+            maxrange = float(config['maxrange'])
             if config['coords'] == "physical":
                 maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
 
@@ -111,6 +111,7 @@ if __name__ == '__main__':
             # of each lens center
             print "matching lens and source catalog..."
             h = eu.htm.HTM(8)
+            matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
             h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
             htmf = HTMFile(matchfile)
             Nmatch = htmf.n_matches
