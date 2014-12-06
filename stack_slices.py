@@ -66,7 +66,6 @@ if __name__ == '__main__':
 
     # open all matching files
     for shapefile in shapefiles:
-        print "opening " + shapefile
         basename = os.path.basename(shapefile)
         basename = basename.split(".")[0]
         stackfile = outdir + basename + '_DeltaSigma.fits'
@@ -76,6 +75,7 @@ if __name__ == '__main__':
         matchfile = '/tmp/' + basename + '_matches.bin'
 
         if os.path.exists(stackfile) is False and os.path.exists(lockfile) is False and os.path.exists(lockfile) is False:
+            print "opening " + shapefile
 
             # create the locks to prevent other processes from doing the same file
             os.system('hostname > ' + tmplockfile) # same machine
@@ -88,13 +88,12 @@ if __name__ == '__main__':
             else:
                 cuts = " && ".join(config['lens_cuts'])
                 mask = hdu[1].where(cuts)
-                lenses = hdu[1][mask]
+                if mask.size:
+                    lenses = hdu[1][mask]
+                else:
+                    lenses = np.array([])
                 del mask
             print "lens sample: %d" % lenses.size
-
-            maxrange = float(config['maxrange'])
-            if config['coords'] == "physical":
-                maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
 
             # open shapes, apply post-run selections
             shdu = fitsio.FITS(shapefile)
@@ -103,21 +102,34 @@ if __name__ == '__main__':
             else:
                 cuts = " && ".join(config['shape_cuts'])
                 mask = shdu[1].where(cuts)
-                shapes = shdu[1][mask]
+                if mask.size:
+                    shapes = shdu[1][mask]
+                else:
+                    shapes = np.array([])
                 del mask
             print "shape sample: %d" % shapes.size
 
             # find all galaxies in shape catalog within maxrange arcmin 
             # of each lens center
-            print "matching lens and source catalog..."
-            h = eu.htm.HTM(8)
-            matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
-            h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
-            htmf = HTMFile(matchfile)
-            Nmatch = htmf.n_matches
-            print "  found ", Nmatch, "matches"
+            if lenses.size and shapes.size:
+                print "matching lens and source catalog..."
+                maxrange = float(config['maxrange'])
+                if config['coords'] == "physical":
+                    maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
+
+                h = eu.htm.HTM(8)
+                matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
+                h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+                htmf = HTMFile(matchfile)
+                Nmatch = htmf.n_matches
+                print "  found ", Nmatch, "matches"
+            else:
+                Nmatch = 0
 
             # iterate over all lenses, write DeltaSigma, r, weight into file
+            fits = fitsio.FITS(tmpstackfile, 'rw')
+            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+            
             if Nmatch:
                 print "stacking lenses..."
                 fits = fitsio.FITS(tmpstackfile, 'rw')
@@ -158,11 +170,13 @@ if __name__ == '__main__':
                     done += n_gal
                     del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
 
-                fits.write(data)
-                fits.close()
-                os.system('mv ' + tmpstackfile + ' ' + stackfile)
-                os.system('rm ' + tmplockfile + ' ' + lockfile)
-                print "done. Created " + stackfile
+            fits.write(data)
+            fits.close()
+            os.system('mv ' + tmpstackfile + ' ' + stackfile)
+            print "done. Created " + stackfile
+            
+            os.system('rm ' + tmplockfile + ' ' + lockfile)
             os.system('rm ' + matchfile)
             hdu.close()
             shdu.close()
+
