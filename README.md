@@ -8,10 +8,12 @@ Usage
 
 ```
 python stack_slices.py test/config.json
-python plot_slices.py test/config.json
+python plot_slices.py test/config.json physical
 ```
 
-The first command opens the config file, creates FITS tables for each of the shape catalogs listed in the config file, and stores them in the directory `test/`. The second command, uses the output of the first and generates stacked shear profiles (in either angular or physical units) for each of the source slices and stores them in the directory `test/`. After that, all `*.fits` files in `test/` can be deleted, or the script can be rerun with modified binning/colors...
+The first command opens the config file, creates FITS tables for each of the shape catalogs listed in the config file, and stores them in the directory `test/`. The second command, uses the output of the first and generates stacked shear profiles (in either `angular` or `physical` units) for each of the source slices and stores them in the directory `test/`. After that, all `*.fits` files in `test/` can be deleted, or the script can be rerun with modified binning/colors...
+
+Note that the plotting script may choose to display different coordinates than those that were used to determine the maximum distance between lens and source during the stacking step, which is set in the config file. At short distances, this normally does not matter, but at large distances using different coordinates for plotting and stacking will lead to suboptimal results.
 
 ```
 python stack_slices.py test/config.json shape_catalog.fits
@@ -32,7 +34,7 @@ One example is given below:
         "lens_catalog": "/catalogs/redmapper/redmapper_catalog.fit",
         "lens_cuts": [],
         "lens_z_key": "Z_LAMBDA",
-        "shape_dir": "/catalogs/im3shapev7_ngmix009/",
+        "shape_files": "/catalogs/im3shapev7_ngmix009/*.fits.gz",
         "shape_z_key": "ZP",
         "shape_ra_key": "ALPHAWIN_J2000_R",
         "shape_dec_key": "DELTAWIN_J2000_R",
