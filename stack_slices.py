@@ -65,6 +65,10 @@ if __name__ == '__main__':
     else:
         shapefiles = glob(config['shape_files'])
 
+    if config['coords'] not in ['angular', 'physical']:
+        print "config: specify either 'angular' or 'physical' coordinates"
+        raise SystemExit
+
     # open all matching files
     for shapefile in shapefiles:
         basename = os.path.basename(shapefile)

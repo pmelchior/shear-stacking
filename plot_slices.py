@@ -1,6 +1,6 @@
 #!/bin/env python
 
-import os, json, fitsio, copy
+import os, errno, json, fitsio, copy
 import matplotlib
 matplotlib.use('agg')
 import pylab as plt
@@ -96,12 +96,12 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
     else:
         ax.set_xlabel('Radius [arcmin]')
 
-def readNbin(stackfile, profile):
+def readNbin(stackfile, profile, coords):
     print "opening file " + stackfile
     fits = fitsio.FITS(stackfile)
     data = fits[1].read()
 
-    if config['coords'] == "angular":
+    if coords == "angular":
         data['radius_angular'] *= 60
 
     # total profiles (E and B mode)
@@ -125,8 +125,9 @@ if __name__ == '__main__':
     # parse inputs
     try:
         configfile = argv[1]
+        coords = argv[2]
     except IndexError:
-        print "usage: " + argv[0] + " <config file> [outdir]"
+        print "usage: " + argv[0] + " <config file> <angular/physical> [outdir]"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -136,21 +137,30 @@ if __name__ == '__main__':
     except IOError:
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
+    if coords not in ['angular', 'physical']:
+        print "specify either angular or physical coordinates"
+        raise SystemExit
 
     indir = os.path.dirname(configfile)
-    if len(argv) > 2:
-        outdir = argv[2]
+    if len(argv) > 3:
+        outdir = argv[3]
     else:
-        outdir = outdir
+        outdir = indir
     if outdir[-1] != '/':
         outdir += '/'
+    try:
+        os.makedirs(outdir)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
+            pass
+        else: raise
 
-    stackfiles = glob(indir + '*_DeltaSigma.fits')
+    stackfiles = glob(indir + '/*_DeltaSigma.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
-        exit(0)
+        raise SystemExit
 
-    if config['coords'] == "physical":
+    if coords == "physical":
         bins =  np.exp(0.3883*np.arange(-10, 10))
     else:
         bins = np.arange(1,11,1) #config['maxrange']*60, 2)
@@ -168,7 +178,7 @@ if __name__ == '__main__':
 
     # iterate thru all DeltaSigma files
     pool = Pool(processes=6)
-    results = [pool.apply_async(readNbin, (stackfile, initprofile)) for stackfile in stackfiles]
+    results = [pool.apply_async(readNbin, (stackfile, initprofile, coords)) for stackfile in stackfiles]
     for r in results:
         thisprofile = r.get()
         profile['all_E'] += thisprofile['all_E']
@@ -177,14 +187,15 @@ if __name__ == '__main__':
             for s in xrange(len(limit)-1):
                 profile[key][s] += thisprofile[key][s] 
         
-    # Plot generation: E/B profile
-    plotfile = outdir + 'shear_stack_EB.png'
+    # plot generation: E/B profile
+    plotfile = outdir + 'shear_stack_EB_' + coords + '.png'
+    print plotfile
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
-    mean_r, n, mean_q, std_q = makeEBProfile(ax, 'all', profile['all_E'], profile['all_B'], config['coords'])
+    mean_r, n, mean_q, std_q = makeEBProfile(ax, 'all', profile['all_E'], profile['all_B'], coords)
     pivot = (mean_q + std_q/2)[n > 0].max()
-    if config['coords'] == "physical":
+    if coords == "physical":
         xlim = (1e-2, mean_r[n > 0].max()*2)
         ylim = (1e-3, 2*pivot)
     else:
@@ -198,10 +209,10 @@ if __name__ == '__main__':
     # sliced profile plots
     for key, limit in config['splittings'].iteritems():
         print "  " + key
-        plotfile = outdir + 'shear_stack_' + key + '.png'
+        plotfile = outdir + 'shear_stack_' + key + '_' + coords + '.png'
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, key, profile[key], config['splittings'][key], config['coords'], xlim, ylim)
+        makeSlicedProfile(ax, key, profile[key], config['splittings'][key], coords, xlim, ylim)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         fig.savefig(plotfile)
 
