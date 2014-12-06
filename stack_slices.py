@@ -39,7 +39,7 @@ if __name__ == '__main__':
         configfile = argv[1]
     except IndexError:
         print "usage: " + argv[0] + " <config file> [shape file]"
-
+        raise SystemExit
     try:
         fp = open(configfile)
         print "opening configfile " + configfile
@@ -47,6 +47,7 @@ if __name__ == '__main__':
         fp.close()
     except IOError:
         print "configfile " + configfile + " does not exist!"
+        raise SystemExit
 
     lensfile = config['lens_catalog']
     outdir = os.path.dirname(configfile)

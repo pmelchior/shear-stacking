@@ -122,27 +122,30 @@ def readNbin(stackfile, profile):
     return profile
 
 if __name__ == '__main__':
-    if len(argv) < 2:
-        print "usage: " + argv[0] +  "<config file> [outdir]"
-        exit(0)
-
-    configfile = argv[1]
-    if os.path.exists(configfile) is False:
+    # parse inputs
+    try:
+        configfile = argv[1]
+    except IndexError:
+        print "usage: " + argv[0] + " <config file> [outdir]"
+        raise SystemExit
+    try:
+        fp = open(configfile)
+        print "opening configfile " + configfile
+        config = json.load(fp)
+        fp.close()
+    except IOError:
         print "configfile " + configfile + " does not exist!"
-        exit(0)
+        raise SystemExit
 
-    print "opening configfile " + configfile
-    fp = open(configfile)
-    config = json.load(fp)
-
+    indir = os.path.dirname(configfile)
     if len(argv) > 2:
         outdir = argv[2]
     else:
-        outdir = os.path.dirname(configfile)
+        outdir = outdir
     if outdir[-1] != '/':
         outdir += '/'
 
-    stackfiles = glob(outdir + '*_DeltaSigma.fits')
+    stackfiles = glob(indir + '*_DeltaSigma.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         exit(0)
