@@ -161,7 +161,7 @@ if __name__ == '__main__':
         raise SystemExit
 
     if coords == "physical":
-        bins =  np.exp(0.3883*np.arange(-10, 10))
+        bins =  np.exp(0.3883*np.arange(-12, 10))
     else:
         bins = np.arange(1,11,1) #config['maxrange']*60, 2)
 

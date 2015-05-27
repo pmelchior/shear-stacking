@@ -174,6 +174,7 @@ if __name__ == '__main__':
                         del values
                     done += n_gal
                     del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
+                os.system('rm ' + matchfile)
 
             fits.write(data)
             fits.close()
@@ -181,7 +182,6 @@ if __name__ == '__main__':
             print "done. Created " + stackfile
             
             os.system('rm ' + tmplockfile + ' ' + lockfile)
-            os.system('rm ' + matchfile)
             hdu.close()
             shdu.close()
 
