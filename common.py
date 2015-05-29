@@ -140,10 +140,14 @@ def getSigmaCrit(z_c, z):
     c2_4piG = 4. # in 1e14 M_solar / Mpc^2 (since cosmo.Da comes in units of c/H0)
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
+# Spec-z calibration sample, matched (roughly to DES shape sample properties)
+# For each photo-z bin from DESDM: p(z_spec | z_phot)
 def getSpecZCalibration():
     thisdir = os.path.dirname(os.path.realpath(__file__))
     return np.loadtxt(thisdir + '/data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
 
+# Based on Mandelbaum et al. MNRAS 386, 781 (2008), eq. 5
+# See also Melchior et al., MNRAS 449, 2219 (2015), eq. 7
 def getSigmaCritCorrection(specz_calib, z_c):
     z_phot = 0.05 + 0.1*np.arange(20)
     above = z_phot > z_c
@@ -161,8 +165,10 @@ def getSigmaCritCorrection(specz_calib, z_c):
         cz[i] = cz[i]**-1
     return z_phot, cz
 
+# extrapolate corrected Sigma_crit at given z
 def getSigmaCritEffective(z_phot, cz, z):
     return extrap(z, z_phot, cz)
+    
 
 from struct import unpack
 class HTMFile:
