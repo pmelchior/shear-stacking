@@ -47,7 +47,7 @@ One example is given below:
                 "im3shape_r_exists == 1",
                 "im3shape_r_error_flag == 0"
         ],
-	"split_type": "shape",
+        "split_type": "shape",
         "splittings": {
                 "FLAGS_I": [0, 1, 2, 4],
                 "ZP": [0.7, 0.9, 1.1, 1.5],
