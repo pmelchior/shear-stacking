@@ -34,19 +34,20 @@ One example is given below:
         "lens_catalog": "/catalogs/redmapper/redmapper_catalog.fit",
         "lens_cuts": [],
         "lens_z_key": "Z_LAMBDA",
-        "shape_files": "/catalogs/im3shapev7_ngmix009/*.fits.gz",
+        "shape_file": "/catalogs/im3shapev7_ngmix009/shapes.fits.gz",
         "shape_z_key": "ZP",
         "shape_ra_key": "ALPHAWIN_J2000_R",
         "shape_dec_key": "DELTAWIN_J2000_R",
         "shape_e1_key": "im3shape_r_e1",
         "shape_e2_key": "im3shape_r_e2",
         "shape_weight_key": "weight_im3shape",
-        "shape_sensitivity_key": "nbc_m"
+        "shape_sensitivity_key": "nbc_m",
         "shape_cuts": [
                 "MODEST_CLASS == 1",
                 "im3shape_r_exists == 1",
                 "im3shape_r_error_flag == 0"
         ],
+	"split_type": "shape",
         "splittings": {
                 "FLAGS_I": [0, 1, 2, 4],
                 "ZP": [0.7, 0.9, 1.1, 1.5],
@@ -64,7 +65,7 @@ Coordinates can be either `angular` or `physical` and refer to the units of the 
 
 `lens_cuts` and `shape_cuts` affect which objects are loaded from either lensing or shape catalogs; filtering can be used on all columns available in either fits files.
 
-`splitting` denote the kind of slices of the shape catalogs. The keys of this dictionary specify either a column in the shape catalog or an entry in the `functions` list. For the latter, any function based on the shape catalog (denoted as `s`) can be implemented. The values denote the limits of the slices for each key, with the upper limit being excluded, e.g. `"FLAGS_I": [0, 1, 2, 4]` creates three slices:
+`splitting` denote the kind of slices of the either shape or lens catalogs (determined by the value of `split_type`). The keys of this dictionary specify either a column in the respective catalog or an entry in the `functions` list. For the latter, any function based on the catalog (denoted as `s`) can be implemented. The values denote the limits of the slices for each key, with the upper limit being excluded, e.g. `"FLAGS_I": [0, 1, 2, 4]` creates three slices:
 ```
 FLAGS_I in [0,1), [1,2), [2,4) 
 ```

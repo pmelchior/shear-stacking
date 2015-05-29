@@ -154,13 +154,22 @@ if __name__ == '__main__':
                 i = 0
                 for key, limit in config['splittings'].iteritems():
                     data['slices'][done:done+n_gal][:,i] = -1 # null value
-                    values = getValues(shapes_lens, key, config['functions'])
-                    for s in xrange(len(limit)-1):
-                        mask = getSliceMask(values, limit[s], limit[s+1])
-                        data['slices'][done:done+n_gal][:,i][mask] = s
-                        del mask
+                    if config['split_type'] == 'shape':
+                        values = getValues(shapes_lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            mask = getSliceMask(values, limit[s], limit[s+1])
+                            data['slices'][done:done+n_gal][:,i][mask] = s
+                            del mask
+                        del values
+                    elif config['split_type'] == 'lens':
+                        value = getValues(lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            # each lens can only be in one slice per key
+                            if getSliceMask(value, limit[s], limit[s+1]):
+                                data['slices'][done:done+n_gal][:,i] = s
+                                break
                     i += 1
-                    del values
+                    
                 done += n_gal
                 del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
             os.system('rm ' + matchfile)
