@@ -66,24 +66,48 @@ if __name__ == '__main__':
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
     
-    # open shapes, apply post-run selections
-    print "opening " + shapefile
+    # open shapes file(s)
     shapefile = config['shape_file']
     chunk_size = config['shape_chunk_size']
+    print "opening shapefile " + shapefile
     shdu = fitsio.FITS(shapefile)
-    if len(config['shape_cuts']) == 0:
-        shapes = shdu[1][startindex : startindex+chunk_size]
-    else:
-        # that's not really elegant since the .where runs on entire table
+    shapes = shdu[1][startindex : startindex+chunk_size]
+
+    # if there's an extra file: join data with shapes
+    try:
+        print "opening extra shapefile " + config['shape_file_extra']
+        ehdu = fitsio.FITS(config['shape_file_extra'])
+        extra = ehdu[1][startindex : startindex+chunk_size]
+        from numpy.lib import recfunctions
+        columns = shdu[1].get_colnames()
+        ecolumns = []
+        for col in ehdu[1].get_colnames():
+            if col not in columns:
+                ecolumns.append(col)
+        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
+        ehdu.close()
+    except KeyError:
+        pass
+
+    # apply shape cuts: either on the file itself of on the extra file
+    # since we're working with FITS type selections, we can't apply it
+    # directly to the shapes array, but need to go back to the catalogs.
+    # that's not really elegant since the .where runs on entire table
+    if len(config['shape_cuts']) > 0:
         cuts = " && ".join(config['shape_cuts'])
-        mask = shdu[1].where(cuts)[startindex : startindex+chunk_size]
+        try:
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            mask = ehdu[1].where(cuts)
+            ehdu.close()
+        except KeyError:
+            mask = shdu[1].where(cuts)[startindex : startindex+chunk_size]
+        # limit to entries in this run
+        mask = mask[(mask >= startindex) & (mask < startindex+chunk_size)]
         if mask.size:
-            shapes = shdu[1][mask]
+            shapes = shapes[mask]
         else:
             shapes = np.array([])
-        del mask
     print "shape sample: %d" % shapes.size
-
     
     if shapes.size:
         basename = os.path.basename(shapefile)
