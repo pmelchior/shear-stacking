@@ -7,7 +7,7 @@ import pylab as plt
 import numpy as np
 import esutil as eu
 from sys import argv
-from common import *
+from shear_stacking import *
 from glob import glob
 from multiprocessing import Pool
 
