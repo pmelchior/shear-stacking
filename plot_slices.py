@@ -34,10 +34,6 @@ def getColors(split):
     return colors
 
 def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
-    if plt.matplotlib.rcParams['text.usetex']:
-        label = r'\texttt{' + key_name.replace("_", "\_") + '}'
-    else:
-        label = key_name
     mean_r, n, mean_q, std_q = profile_B.getProfile()
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='B-mode', lw=lw)
     mean_r, n, mean_q, std_q = profile_E.getProfile()
@@ -84,8 +80,8 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
         ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
-    plt.setp(legend.get_title(),fontsize='small')
+    #legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
+    #plt.setp(legend.get_title(),fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
@@ -155,7 +151,7 @@ if __name__ == '__main__':
             pass
         else: raise
 
-    stackfiles = glob(indir + '/*_DeltaSigma.fits')
+    stackfiles = glob(indir + '/*_DeltaSigma*.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         raise SystemExit

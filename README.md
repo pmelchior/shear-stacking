@@ -65,7 +65,7 @@ Coordinates can be either `angular` or `physical` and refer to the units of the 
 
 `lens_cuts` and `shape_cuts` affect which objects are loaded from either lensing or shape catalogs; filtering can be used on all columns available in either fits files.
 
-`splitting` denote the kind of slices of the either shape or lens catalogs (determined by the value of `split_type`). The keys of this dictionary specify either a column in the respective catalog or an entry in the `functions` list. For the latter, any function based on the catalog (denoted as `s`) can be implemented. The values denote the limits of the slices for each key, with the upper limit being excluded, e.g. `"FLAGS_I": [0, 1, 2, 4]` creates three slices:
+`splitting` denote the kind of slices of the either shape or lens catalogs (determined by the value of `split_type`). For technical reason, there need to be at least two splitting keys, or none. The keys of this dictionary specify either a column in the respective catalog or an entry in the `functions` list. For the latter, any function based on the catalog (denoted as `s`) can be implemented. The values denote the limits of the slices for each key, with the upper limit being excluded, e.g. `"FLAGS_I": [0, 1, 2, 4]` creates three slices:
 ```
 FLAGS_I in [0,1), [1,2), [2,4) 
 ```

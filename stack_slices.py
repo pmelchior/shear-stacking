@@ -71,43 +71,46 @@ if __name__ == '__main__':
     chunk_size = config['shape_chunk_size']
     print "opening shapefile " + shapefile
     shdu = fitsio.FITS(shapefile)
-    shapes = shdu[1][startindex : startindex+chunk_size]
 
-    # if there's an extra file: join data with shapes
-    try:
-        print "opening extra shapefile " + config['shape_file_extra']
-        ehdu = fitsio.FITS(config['shape_file_extra'])
-        extra = ehdu[1][startindex : startindex+chunk_size]
-        from numpy.lib import recfunctions
-        columns = shdu[1].get_colnames()
-        ecolumns = []
-        for col in ehdu[1].get_colnames():
-            if col not in columns:
-                ecolumns.append(col)
-        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
-        ehdu.close()
-    except KeyError:
-        pass
-
+    extra = None
+    if len(config['shape_cuts']) == 0:
+        shapes = shdu[1][startindex : startindex+chunk_size]
+        try:
+            print "opening extra shapefile " + config['shape_file_extra']
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            extra = ehdu[1][startindex : startindex+chunk_size]
+            ehdu.close()
+        except KeyError:
+            pass
+    else:
     # apply shape cuts: either on the file itself of on the extra file
     # since we're working with FITS type selections, we can't apply it
     # directly to the shapes array, but need to go back to the catalogs.
     # that's not really elegant since the .where runs on entire table
-    if len(config['shape_cuts']) > 0:
         cuts = " && ".join(config['shape_cuts'])
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
-            mask = ehdu[1].where(cuts)
+            mask = ehdu[1].where(cuts)[startindex : startindex+chunk_size]
+            shapes = shdu[1][mask]
+            extra = ehdu[1][mask]
             ehdu.close()
         except KeyError:
             mask = shdu[1].where(cuts)[startindex : startindex+chunk_size]
-        # limit to entries in this run
-        mask = mask[(mask >= startindex) & (mask < startindex+chunk_size)]
-        if mask.size:
-            shapes = shapes[mask]
-        else:
-            shapes = np.array([])
+            shapes = shdu[1][mask]
+        del mask
     print "shape sample: %d" % shapes.size
+    
+    # if there's an extra file: join data with shapes
+    if extra is not None:
+        from numpy.lib import recfunctions
+        columns = shapes.dtype.names
+        ecolumns = []
+        for col in extra.dtype.names:
+            if col not in columns:
+                ecolumns.append(col)
+        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
+
+    
     
     if shapes.size:
         basename = os.path.basename(shapefile)
@@ -148,7 +151,7 @@ if __name__ == '__main__':
 
         if Nmatch:
             print "stacking lenses..."
-            fits = fitsio.FITS(tmpstackfile, 'rw')
+            fits = fitsio.FITS(stackfile, 'rw')
             data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
             specz_calib = getSpecZCalibration()
             done = 0
