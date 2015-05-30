@@ -38,9 +38,9 @@ if __name__ == '__main__':
     # parse inputs
     try:
         configfile = argv[1]
-        startindex = int(argv[2])
+        chunkindex = int(argv[2])
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <start index>"
+        print "usage: " + argv[0] + " <config file> <chunk index>"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -74,11 +74,11 @@ if __name__ == '__main__':
 
     extra = None
     if len(config['shape_cuts']) == 0:
-        shapes = shdu[1][startindex : startindex+chunk_size]
+        shapes = shdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
         try:
             print "opening extra shapefile " + config['shape_file_extra']
             ehdu = fitsio.FITS(config['shape_file_extra'])
-            extra = ehdu[1][startindex : startindex+chunk_size]
+            extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
             ehdu.close()
         except KeyError:
             pass
@@ -90,12 +90,12 @@ if __name__ == '__main__':
         cuts = " && ".join(config['shape_cuts'])
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
-            mask = ehdu[1].where(cuts)[startindex : startindex+chunk_size]
+            mask = ehdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
             shapes = shdu[1][mask]
             extra = ehdu[1][mask]
             ehdu.close()
         except KeyError:
-            mask = shdu[1].where(cuts)[startindex : startindex+chunk_size]
+            mask = shdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
             shapes = shdu[1][mask]
         del mask
     print "shape sample: %d" % shapes.size
@@ -115,8 +115,8 @@ if __name__ == '__main__':
     if shapes.size:
         basename = os.path.basename(shapefile)
         basename = basename.split(".")[0]
-        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % startindex
-        matchfile = '/tmp/' + basename + '_matches_%d.bin' % startindex
+        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunkindex
+        matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunkindex
 
         # open lens catalog, apply selection if desired
         hdu = fitsio.FITS(lensfile)
