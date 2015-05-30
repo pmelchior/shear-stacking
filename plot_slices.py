@@ -173,7 +173,8 @@ if __name__ == '__main__':
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    pool = Pool(processes=6)
+    n_processes = min(len(stackfiles), 6)
+    pool = Pool(processes=n_processes)
     results = [pool.apply_async(readNbin, (stackfile, initprofile, coords)) for stackfile in stackfiles]
     for r in results:
         thisprofile = r.get()
