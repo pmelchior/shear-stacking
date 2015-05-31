@@ -80,8 +80,8 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
         ax.errorbar(mean_r_, mean_q_, yerr=std_q_, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    #legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
-    #plt.setp(legend.get_title(),fontsize='small')
+    legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
+    plt.setp(legend.get_title(),fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
