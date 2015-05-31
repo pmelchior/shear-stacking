@@ -4,7 +4,7 @@ import numpy as np
 import esutil as eu
 import os, errno
 from sys import argv
-from common import *
+from shear_stacking import *
 import math 
 import fitsio
 import json
@@ -38,9 +38,9 @@ if __name__ == '__main__':
     # parse inputs
     try:
         configfile = argv[1]
-        startindex = int(argv[2])
+        chunkindex = int(argv[2])
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <start index>"
+        print "usage: " + argv[0] + " <config file> <chunk index>"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -66,30 +66,57 @@ if __name__ == '__main__':
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
     
-    # open shapes, apply post-run selections
-    print "opening " + shapefile
+    # open shapes file(s)
     shapefile = config['shape_file']
     chunk_size = config['shape_chunk_size']
+    print "opening shapefile " + shapefile
     shdu = fitsio.FITS(shapefile)
+
+    extra = None
     if len(config['shape_cuts']) == 0:
-        shapes = shdu[1][startindex : startindex+chunk_size]
+        shapes = shdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+        try:
+            print "opening extra shapefile " + config['shape_file_extra']
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+            ehdu.close()
+        except KeyError:
+            pass
     else:
-        # that's not really elegant since the .where runs on entire table
+    # apply shape cuts: either on the file itself of on the extra file
+    # since we're working with FITS type selections, we can't apply it
+    # directly to the shapes array, but need to go back to the catalogs.
+    # that's not really elegant since the .where runs on entire table
         cuts = " && ".join(config['shape_cuts'])
-        mask = shdu[1].where(cuts)[startindex : startindex+chunk_size]
-        if mask.size:
+        try:
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            mask = ehdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
             shapes = shdu[1][mask]
-        else:
-            shapes = np.array([])
+            extra = ehdu[1][mask]
+            ehdu.close()
+        except KeyError:
+            mask = shdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+            shapes = shdu[1][mask]
         del mask
     print "shape sample: %d" % shapes.size
+    
+    # if there's an extra file: join data with shapes
+    if extra is not None:
+        from numpy.lib import recfunctions
+        columns = shapes.dtype.names
+        ecolumns = []
+        for col in extra.dtype.names:
+            if col not in columns:
+                ecolumns.append(col)
+        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
 
+    
     
     if shapes.size:
         basename = os.path.basename(shapefile)
         basename = basename.split(".")[0]
-        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % startindex
-        matchfile = '/tmp/' + basename + '_matches_%d.bin' % startindex
+        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunkindex
+        matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunkindex
 
         # open lens catalog, apply selection if desired
         hdu = fitsio.FITS(lensfile)
@@ -124,7 +151,7 @@ if __name__ == '__main__':
 
         if Nmatch:
             print "stacking lenses..."
-            fits = fitsio.FITS(tmpstackfile, 'rw')
+            fits = fitsio.FITS(stackfile, 'rw')
             data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
             specz_calib = getSpecZCalibration()
             done = 0
@@ -154,13 +181,22 @@ if __name__ == '__main__':
                 i = 0
                 for key, limit in config['splittings'].iteritems():
                     data['slices'][done:done+n_gal][:,i] = -1 # null value
-                    values = getValues(shapes_lens, key, config['functions'])
-                    for s in xrange(len(limit)-1):
-                        mask = getSliceMask(values, limit[s], limit[s+1])
-                        data['slices'][done:done+n_gal][:,i][mask] = s
-                        del mask
+                    if config['split_type'] == 'shape':
+                        values = getValues(shapes_lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            mask = getSliceMask(values, limit[s], limit[s+1])
+                            data['slices'][done:done+n_gal][:,i][mask] = s
+                            del mask
+                        del values
+                    elif config['split_type'] == 'lens':
+                        value = getValues(lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            # each lens can only be in one slice per key
+                            if getSliceMask(value, limit[s], limit[s+1]):
+                                data['slices'][done:done+n_gal][:,i] = s
+                                break
                     i += 1
-                    del values
+                    
                 done += n_gal
                 del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
             os.system('rm ' + matchfile)

@@ -7,7 +7,7 @@ import pylab as plt
 import numpy as np
 import esutil as eu
 from sys import argv
-from common import *
+from shear_stacking import *
 from glob import glob
 from multiprocessing import Pool
 
@@ -34,10 +34,6 @@ def getColors(split):
     return colors
 
 def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
-    if plt.matplotlib.rcParams['text.usetex']:
-        label = r'\texttt{' + key_name.replace("_", "\_") + '}'
-    else:
-        label = key_name
     mean_r, n, mean_q, std_q = profile_B.getProfile()
     ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='B-mode', lw=lw)
     mean_r, n, mean_q, std_q = profile_E.getProfile()
@@ -155,7 +151,7 @@ if __name__ == '__main__':
             pass
         else: raise
 
-    stackfiles = glob(indir + '/*_DeltaSigma.fits')
+    stackfiles = glob(indir + '/*_DeltaSigma*.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         raise SystemExit
@@ -177,7 +173,8 @@ if __name__ == '__main__':
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    pool = Pool(processes=6)
+    n_processes = min(len(stackfiles), 6)
+    pool = Pool(processes=n_processes)
     results = [pool.apply_async(readNbin, (stackfile, initprofile, coords)) for stackfile in stackfiles]
     for r in results:
         thisprofile = r.get()
