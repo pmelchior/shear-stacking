@@ -157,7 +157,7 @@ if __name__ == '__main__':
         raise SystemExit
 
     if coords == "physical":
-        bins =  np.exp(0.3883*np.arange(-12, 10))
+        bins =  np.exp(0.3883*np.arange(-12, 12))
     else:
         bins = np.arange(1,11,1) #config['maxrange']*60, 2)
 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
     keys = config['splittings'].keys()
 
     # iterate thru all DeltaSigma files
-    n_processes = min(len(stackfiles), 6)
+    n_processes = min(len(stackfiles), 8)
     pool = Pool(processes=n_processes)
     results = [pool.apply_async(readNbin, (stackfile, initprofile, coords)) for stackfile in stackfiles]
     for r in results:
