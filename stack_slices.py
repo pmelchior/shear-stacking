@@ -38,7 +38,7 @@ if __name__ == '__main__':
     # parse inputs
     try:
         configfile = argv[1]
-        chunkindex = int(argv[2])
+        chunk_index = int(argv[2])
     except IndexError:
         print "usage: " + argv[0] + " <config file> <chunk index>"
         raise SystemExit
@@ -69,15 +69,15 @@ if __name__ == '__main__':
     # open shapes file(s)
     shapefile = config['shape_file']
     chunk_size = config['shape_chunk_size']
-    print "opening shapefile " + shapefile
     shdu = fitsio.FITS(shapefile)
-
     extra = None
+    print "opening shapefile %s (%d entries)" % (shapefile, shdu[1].get_nrows())
+
     if len(config['shape_cuts']) == 0:
-        shapes = shdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+        shapes = shdu[1][chunk_index*chunk_size : (chunk_index+1)*chunk_size]
         try:
-            print "opening extra shapefile " + config['shape_file_extra']
             ehdu = fitsio.FITS(config['shape_file_extra'])
+            print "opening extra shapefile " + config['shape_file_extra']
             extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
             ehdu.close()
         except KeyError:
@@ -90,15 +90,19 @@ if __name__ == '__main__':
         cuts = " && ".join(config['shape_cuts'])
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
-            mask = ehdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+            print "opening extra shapefile " + config['shape_file_extra']
+            mask = ehdu[1].where(cuts)
+            print "selecting %d shapes" % mask.size
+            mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
             shapes = shdu[1][mask]
             extra = ehdu[1][mask]
             ehdu.close()
         except KeyError:
-            mask = shdu[1].where(cuts)[chunkindex*chunk_size : (chunkindex+1)*chunk_size]
-            shapes = shdu[1][mask]
+            mask = shdu[1].where(cuts)
+            print "selecting %d shapes" % mask.size
+            shapes = shdu[1][mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]]
         del mask
-    print "shape sample: %d" % shapes.size
+    print "shape sample (this chunk): %d" % shapes.size
     
     # if there's an extra file: join data with shapes
     if extra is not None:
@@ -110,13 +114,11 @@ if __name__ == '__main__':
                 ecolumns.append(col)
         shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
 
-    
-    
     if shapes.size:
         basename = os.path.basename(shapefile)
         basename = basename.split(".")[0]
-        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunkindex
-        matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunkindex
+        stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunk_index
+        matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunk_index
 
         # open lens catalog, apply selection if desired
         hdu = fitsio.FITS(lensfile)
@@ -151,31 +153,42 @@ if __name__ == '__main__':
 
         if Nmatch:
             print "stacking lenses..."
-            fits = fitsio.FITS(stackfile, 'rw')
+            fits = fitsio.FITS(stackfile, 'rw', clobber=True)
             data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
-            specz_calib = getSpecZCalibration()
-            done = 0
+            
+            # get effective lensing weights (w * Sigma_crit ^-1 or -2)
+            wz1 = getWZ(power=1)
+            wz2 = getWZ(power=2)
 
             # iterate over all lenses, write DeltaSigma, r, weight into file
+            done = 0
             for m1, m2, d12 in htmf.matches():
                 lens = lenses[m1]
                 shapes_lens = shapes[m2]
                 n_gal = shapes_lens.size
 
-                # compute effective Sigma_crit
-                z_phot, cz = getSigmaCritCorrection(specz_calib, lens[config['lens_z_key']])
-                sigma_crit = getSigmaCritEffective(z_phot, cz, shapes_lens[config['shape_z_key']])
                 # compute tangential and cross shear
                 gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
 
-                data['DeltaSigma'][done:done+n_gal] = sigma_crit * gt
-                data['DeltaSigma_x'][done:done+n_gal] = sigma_crit * gx
+                data['DeltaSigma'][done:done+n_gal] = gt
+                data['DeltaSigma_x'][done:done+n_gal] = gx
                 data['radius_angular'][done:done+n_gal] = d12
                 data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
 
-                # compute sensitivity and weights
-                data['sensitivity'][done:done+n_gal] = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
-                data['weight'][done:done+n_gal] = getValues(shapes_lens, config['shape_weight_key'], config['functions'])/sigma_crit**2
+                # compute sensitivity and weights: with the photo-z bins, we use
+                # DeltaSigma = wz1 < gt> / (wz2 <s>),
+                # where wz1 and wz2 are the effective weights at given lens z
+                zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
+                sensitivity = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
+                for b in xrange(3): # 3 bins
+                    wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
+                    wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
+                    mask = zs_bin == b
+                    data['weight'][done:done+n_gal][mask] = wz1_
+                    # in the plot_slices script, the sensitivity will be
+                    # multiplied with the weight, so we need to divide wz1 out
+                    data['sensitivity'][done:done+n_gal][mask] = sensitivity[mask] * wz2_ / wz1_
+                    del mask
 
                 # get indices for all sources in each slice
                 i = 0
@@ -198,7 +211,7 @@ if __name__ == '__main__':
                     i += 1
                     
                 done += n_gal
-                del lens, shapes_lens, z_phot, cz, sigma_crit, gt, gx
+                del lens, shapes_lens, gt, gx, zs_bin, sensitivity
             os.system('rm ' + matchfile)
 
             fits.write(data)

@@ -123,9 +123,10 @@ class BinnedScalarProfile:
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range
 def extrap(x, xp, yp):
     """np.interp function with linear extrapolation"""
-    y = np.interp(x, xp, yp)
-    y[x < xp[0]] = yp[0] + (x[x<xp[0]]-xp[0]) * (yp[0]-yp[1]) / (xp[0]-xp[1])
-    y[x > xp[-1]]= yp[-1] + (x[x>xp[-1]]-xp[-1])*(yp[-1]-yp[-2])/(xp[-1]-xp[-2])
+    x_ = np.array(x)
+    y = np.array(np.interp(x_, xp, yp))
+    y[x_ < xp[0]] = yp[0] + (x_[x_ < xp[0]] -xp[0]) * (yp[0] - yp[1]) / (xp[0] - xp[1])
+    y[x_ > xp[-1]] = yp[-1] + (x_[x_ > xp[-1]] -xp[-1])*(yp[-1] - yp[-2])/(xp[-1] - xp[-2])
     return y  
 
 from galsim import Cosmology
@@ -140,35 +141,22 @@ def getSigmaCrit(z_c, z):
     c2_4piG = 4. # in 1e14 M_solar / Mpc^2 (since cosmo.Da comes in units of c/H0)
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
-# Spec-z calibration sample, matched (roughly to DES shape sample properties)
-# For each photo-z bin from DESDM: p(z_spec | z_phot)
-def getSpecZCalibration():
+# From Troxel: <Sigma_crit ^-power w> / <w> for each photo-z bin
+# calculated for flat LCDM model with Omega_m = 0.27 and distances in Mpc
+def getWZ(power=1):
     thisdir = os.path.dirname(os.path.realpath(__file__))
-    return np.loadtxt(thisdir + '/data/checkphotoz_sv_deep_i24_psf1.2_sva1.dat')
+    if power != 1 and power != 2:
+        raise RuntimeError("Must be integer power 1 or 2")
+    filename = 'invsigcrit-skynetsmooth6-false_z_mean.txt'
+    if power == 2:
+        filename = 'invsigcrit2-skynetsmooth6-false_z_mean.txt'
+    data = np.genfromtxt(thisdir + '/data/' + filename, dtype=[('z', 'float32'), ('bin0', 'float32'), ('bin1', 'float32'), ('bin2', 'float32')])
 
-# Based on Mandelbaum et al. MNRAS 386, 781 (2008), eq. 5
-# See also Melchior et al., MNRAS 449, 2219 (2015), eq. 7
-def getSigmaCritCorrection(specz_calib, z_c):
-    z_phot = 0.05 + 0.1*np.arange(20)
-    above = z_phot > z_c
-    z_phot = z_phot[above]
-    cz = np.zeros_like(z_phot)
-    for i in range(len(z_phot)):
-        z_s = z_phot[i]
-        mask = np.abs(specz_calib[:,0] - z_s) < 0.01
-        SigmaCrit_ = getSigmaCrit(z_c, z_s)
-        z_spec = specz_calib[:,1][mask]
-        prob = specz_calib[:,2][mask]
-        for j in xrange(len(z_spec)):
-            if z_spec[j] > z_c:
-                cz[i] += prob[j]*getSigmaCrit(z_c, z_spec[j])**-1
-        cz[i] = cz[i]**-1
-    return z_phot, cz
+    c2_4piG = 1.654e4 # in 1e14 M_solar / Mpc, for distances in Mpc
+    for b in xrange(3):
+        data['bin%d' % b] /= c2_4piG**power
+    return data
 
-# extrapolate corrected Sigma_crit at given z
-def getSigmaCritEffective(z_phot, cz, z):
-    return extrap(z, z_phot, cz)
-    
 
 from struct import unpack
 class HTMFile:
