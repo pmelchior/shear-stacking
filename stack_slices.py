@@ -1,14 +1,11 @@
 #!/bin/env python
 
+import os, errno, math, json
 import numpy as np
 import esutil as eu
-import os, errno
 from sys import argv
-from shear_stacking import *
-import math 
-import fitsio
-import json
 from glob import glob
+from shear_stacking import *
 
 def getValues(s, key, functions):
     # what values are used for the slices: functions are direct columns?
@@ -51,7 +48,6 @@ if __name__ == '__main__':
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
 
-    lensfile = config['lens_catalog']
     outdir = os.path.dirname(configfile)
     if outdir[-1] != '/':
         outdir += '/'
@@ -65,54 +61,10 @@ if __name__ == '__main__':
     if config['coords'] not in ['angular', 'physical']:
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
-    
-    # open shapes file(s)
-    shapefile = config['shape_file']
-    chunk_size = config['shape_chunk_size']
-    shdu = fitsio.FITS(shapefile)
-    extra = None
-    print "opening shapefile %s (%d entries)" % (shapefile, shdu[1].get_nrows())
 
-    if len(config['shape_cuts']) == 0:
-        shapes = shdu[1][chunk_index*chunk_size : (chunk_index+1)*chunk_size]
-        try:
-            ehdu = fitsio.FITS(config['shape_file_extra'])
-            print "opening extra shapefile " + config['shape_file_extra']
-            extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
-            ehdu.close()
-        except KeyError:
-            pass
-    else:
-    # apply shape cuts: either on the file itself of on the extra file
-    # since we're working with FITS type selections, we can't apply it
-    # directly to the shapes array, but need to go back to the catalogs.
-    # that's not really elegant since the .where runs on entire table
-        cuts = " && ".join(config['shape_cuts'])
-        try:
-            ehdu = fitsio.FITS(config['shape_file_extra'])
-            print "opening extra shapefile " + config['shape_file_extra']
-            mask = ehdu[1].where(cuts)
-            print "selecting %d shapes" % mask.size
-            mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
-            shapes = shdu[1][mask]
-            extra = ehdu[1][mask]
-            ehdu.close()
-        except KeyError:
-            mask = shdu[1].where(cuts)
-            print "selecting %d shapes" % mask.size
-            shapes = shdu[1][mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]]
-        del mask
-    print "shape sample (this chunk): %d" % shapes.size
-    
-    # if there's an extra file: join data with shapes
-    if extra is not None:
-        from numpy.lib import recfunctions
-        columns = shapes.dtype.names
-        ecolumns = []
-        for col in extra.dtype.names:
-            if col not in columns:
-                ecolumns.append(col)
-        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
+    # open shape catalog
+    shapefile = config['shape_file']
+    shapes = getShapeCatalog(config, verbose=True, chunk_index=chunk_index)
 
     if shapes.size:
         basename = os.path.basename(shapefile)
@@ -120,23 +72,12 @@ if __name__ == '__main__':
         stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunk_index
         matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunk_index
 
-        # open lens catalog, apply selection if desired
-        hdu = fitsio.FITS(lensfile)
-        if len(config['lens_cuts']) == 0:
-            lenses = hdu[1][:]
-        else:
-            cuts = " && ".join(config['lens_cuts'])
-            mask = hdu[1].where(cuts)
-            if mask.size:
-                lenses = hdu[1][mask]
-            else:
-                lenses = np.array([])
-            del mask
-        print "lens sample: %d" % lenses.size
+        # open lens catalog
+        lenses = getLensCatalog(config, verbose=True)
 
         # find all galaxies in shape catalog within maxrange arcmin 
         # of each lens center
-        if lenses.size and shapes.size:
+        if lenses.size:
             print "matching lens and source catalog..."
             maxrange = float(config['maxrange'])
             if config['coords'] == "physical":
@@ -217,7 +158,3 @@ if __name__ == '__main__':
             fits.write(data)
             fits.close()
             print "done. Created " + stackfile
-
-        hdu.close()
-    shdu.close()
-

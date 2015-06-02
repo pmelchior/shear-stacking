@@ -1,6 +1,6 @@
 import numpy as np
 from math import pi, sqrt
-import os
+import os, fitsio
 
 def skyAngle(ra, dec, ra_ref, dec_ref):
     # CAUTION: this needs to be a pseudo-Cartesian coordinate frame
@@ -157,6 +157,89 @@ def getWZ(power=1):
         data['bin%d' % b] /= c2_4piG**power
     return data
 
+def getShapeCatalog(config, verbose=False, chunk_index=None):
+    # open shapes file(s)
+    shapefile = config['shape_file']
+    chunk_size = config['shape_chunk_size']
+    shdu = fitsio.FITS(shapefile)
+    extra = None
+    if verbose:
+        print "opening shapefile %s (%d entries)" % (shapefile, shdu[1].get_nrows())
+
+    if len(config['shape_cuts']) == 0:
+        if chunk_index is None:
+            shapes = shdu[1][:]
+        else:
+            shapes = shdu[1][chunk_index*chunk_size : (chunk_index+1)*chunk_size]
+        try:
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            if verbose:
+                print "opening extra shapefile " + config['shape_file_extra']
+            if chunk_index is None:
+                extra = ehdu[1][:]
+            else:
+                extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+            ehdu.close()
+        except KeyError:
+            pass
+    else:
+    # apply shape cuts: either on the file itself of on the extra file
+    # since we're working with FITS type selections, we can't apply it
+    # directly to the shapes array, but need to go back to the catalogs.
+    # that's not really elegant since the .where runs on entire table
+        cuts = " && ".join(config['shape_cuts'])
+        try:
+            ehdu = fitsio.FITS(config['shape_file_extra'])
+            mask = ehdu[1].where(cuts)
+            if verbose:
+                print "opening extra shapefile " + config['shape_file_extra']
+                print "selecting %d shapes" % mask.size
+            if chunk_index is not None:
+                mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
+            shapes = shdu[1][mask]
+            extra = ehdu[1][mask]
+            ehdu.close()
+        except KeyError:
+            mask = shdu[1].where(cuts)
+            if verbose:
+                print "selecting %d shapes" % mask.size
+            if chunk_index is not None:
+                mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
+            shapes = shdu[1][mask]
+        del mask
+    if verbose:
+        print "shape sample (this chunk): %d" % shapes.size
+    shdu.close()
+
+    # if there's an extra file: join data with shapes
+    if extra is not None:
+        from numpy.lib import recfunctions
+        columns = shapes.dtype.names
+        ecolumns = []
+        for col in extra.dtype.names:
+            if col not in columns:
+                ecolumns.append(col)
+        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
+    return shapes
+
+def getLensCatalog(config, verbose=False):
+    lensfile = config['lens_catalog']
+    hdu = fitsio.FITS(lensfile)
+    if verbose:
+        print "opening lensfile %s (%d entries)" % (lensfile, hdu[1].get_nrows())
+    if len(config['lens_cuts']) == 0:
+        lenses = hdu[1][:]
+    else:
+        cuts = " && ".join(config['lens_cuts'])
+        mask = hdu[1].where(cuts)
+        if verbose:
+            print "selecting %d lenses" % mask.size
+        lenses = hdu[1][mask]
+    hdu.close()
+    
+    if verbose:
+        print "lens sample: %d" % lenses.size
+    return lenses
 
 from struct import unpack
 class HTMFile:
