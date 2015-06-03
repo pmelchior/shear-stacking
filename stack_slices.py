@@ -1,6 +1,6 @@
 #!/bin/env python
 
-import os, errno, math, json
+import os, errno, json
 import numpy as np
 import esutil as eu
 from sys import argv
@@ -19,17 +19,6 @@ def getSliceMask(values, lower, upper, return_num=False):
         return (values >= lower) & (values < upper)
     else:
         return sum((values >= lower) & (values < upper))
-
-# get separation in deg for distance L in Mpc/h at redshift z
-# uses c/H0 = 3000 Mpc/h
-def Dist2Ang(L, z):
-    global cosmo
-    return L / cosmo.Da(z) / 3000. * 180./math.pi
-
-def Ang2Dist(theta, z):
-    global cosmo
-    return theta * cosmo.Da(z) * 3000. / 180. * math.pi
-
 
 if __name__ == '__main__':
     # parse inputs
@@ -68,7 +57,7 @@ if __name__ == '__main__':
 
     if shapes.size:
         basename = os.path.basename(shapefile)
-        basename = basename.split(".")[0]
+        basename = ".".join(basename.split(".")[:-1])
         stackfile = outdir + basename + '_DeltaSigma_%d.fits' % chunk_index
         matchfile = '/tmp/' + basename + '_matches_%d.bin' % chunk_index
 

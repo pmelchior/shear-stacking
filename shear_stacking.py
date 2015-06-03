@@ -131,6 +131,17 @@ def extrap(x, xp, yp):
 
 from galsim import Cosmology
 cosmo = Cosmology()
+
+# get separation in deg for distance L in Mpc/h at redshift z
+# uses c/H0 = 3000 Mpc/h
+def Dist2Ang(L, z):
+    global cosmo
+    return L / cosmo.Da(z) / 3000. * 180./np.pi
+
+def Ang2Dist(theta, z):
+    global cosmo
+    return theta * cosmo.Da(z) * 3000. / 180. * np.pi
+
 def getBeta(z_c, z):
     if z_c >= z:
         return 0
@@ -142,7 +153,8 @@ def getSigmaCrit(z_c, z):
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
 # From Troxel: <Sigma_crit ^-power w> / <w> for each photo-z bin
-# calculated for flat LCDM model with Omega_m = 0.27 and distances in Mpc
+# calculated for flat LCDM model with Omega_m = 0.27, h=0.7 and distances in Mpc
+# FIXME: need to adjust to Omega_m = 0.3 of our reference cosmology
 def getWZ(power=1):
     thisdir = os.path.dirname(os.path.realpath(__file__))
     if power != 1 and power != 2:
@@ -223,7 +235,7 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
     return shapes
 
 def getLensCatalog(config, verbose=False):
-    lensfile = config['lens_catalog']
+    lensfile = config['lens_file']
     hdu = fitsio.FITS(lensfile)
     if verbose:
         print "opening lensfile %s (%d entries)" % (lensfile, hdu[1].get_nrows())
