@@ -20,25 +20,28 @@ def getSliceMask(values, lower, upper, return_num=False):
     else:
         return sum((values >= lower) & (values < upper))
 
-def getQuadrantMask(lens, shapes, quad_flags):
+def getQuadrantMask(lens, shapes):
+    quad_flags = lens['quad_flags']
     # no quadrant pairs OK
-    if quad_flags == 0:
-        return []
-    
-    # not all quadrant pairs are OK
-    if quad_flags != (2**1 + 2**2 + 2**3 + 2**4):
-        mask = np.zeros(shapes_lens.size, dtype='bool')
-        if quad_flags & 2 != 0:
-            mask |= shapes_lens[config['shape_dec_key']] < lens['DEC']
-        if quad_flags & 4 != 0:
-            mask |= shapes_lens[config['shape_ra_key']] > lens['RA']
-        if quad_flags & 8 != 0:
-            mask |= shapes_lens[config['shape_dec_key']] > lens['DEC']
-        if quad_flags & 16 != 0:
-            mask |= shapes_lens[config['shape_ra_key']] < lens['RA']
-        return mask
-    else:
+    if quad_flags <= 1:
+        return np.array([], dtype='bool')
+    # all OK
+    if quad_flags == (2**0 + 2**1 + 2**2 + 2**3 + 2**4):
         return np.ones(shapes.size, dtype='bool')
+
+    # not all quadrant pairs are OK
+    # FIXME: needs to be defined from angles on the curved sky
+    # NOTE: very restrictive due to strict ordering of quadrants
+    # e.g. if all sources are in the top half, but quad_flags & 2 > 0,
+    # then no source will be selected even if quad_flags & 8 > 0
+    if quad_flags & 2 > 0:
+        return shapes[config['shape_dec_key']] > lens['DEC']
+    if quad_flags & 4 > 0:
+        return shapes[config['shape_ra_key']] < lens['RA']
+    if quad_flags & 8 > 0:
+        return shapes[config['shape_dec_key']] < lens['DEC']
+    if quad_flags & 16 > 0:
+        return shapes[config['shape_ra_key']] > lens['RA']
         
 if __name__ == '__main__':
     # parse inputs
@@ -119,57 +122,57 @@ if __name__ == '__main__':
                 shapes_lens = shapes[m2]
                 # check which sources around a lens we can use
                 if do_quadrant_check:
-                    quad_flags = lens['quad_flags']
-                    mask = getQuadrantMask(lens, shapes, quad_flags)
+                    mask = getQuadrantMask(lens, shapes_lens)
                     shapes_lens = shapes_lens[mask]
                     d12 = np.array(d12)[mask]
                 n_gal = shapes_lens.size
 
-                # compute tangential and cross shear
-                gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
+                if n_gal:
+                    # compute tangential and cross shear
+                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
 
-                data['DeltaSigma'][done:done+n_gal] = gt
-                data['DeltaSigma_x'][done:done+n_gal] = gx
-                data['radius_angular'][done:done+n_gal] = d12
-                data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
+                    data['DeltaSigma'][done:done+n_gal] = gt
+                    data['DeltaSigma_x'][done:done+n_gal] = gx
+                    data['radius_angular'][done:done+n_gal] = d12
+                    data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
 
-                # compute sensitivity and weights: with the photo-z bins, we use
-                # DeltaSigma = wz1 < gt> / (wz2 <s>),
-                # where wz1 and wz2 are the effective weights at given lens z
-                zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
-                sensitivity = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
-                for b in xrange(3): # 3 bins
-                    wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
-                    wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
-                    mask = zs_bin == b
-                    data['weight'][done:done+n_gal][mask] = wz1_
-                    # in the plot_slices script, the sensitivity will be
-                    # multiplied with the weight, so we need to divide wz1 out
-                    data['sensitivity'][done:done+n_gal][mask] = sensitivity[mask] * wz2_ / wz1_
-                    del mask
+                    # compute sensitivity and weights: with the photo-z bins, we use
+                    # DeltaSigma = wz1 < gt> / (wz2 <s>),
+                    # where wz1 and wz2 are the effective weights at given lens z
+                    zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
+                    sensitivity = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
+                    for b in xrange(3): # 3 bins
+                        wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
+                        wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
+                        mask = zs_bin == b
+                        data['weight'][done:done+n_gal][mask] = wz1_
+                        # in the plot_slices script, the sensitivity will be
+                        # multiplied with the weight, so we need to divide wz1 out
+                        data['sensitivity'][done:done+n_gal][mask] = sensitivity[mask] * wz2_ / wz1_
+                        del mask
 
-                # get indices for all sources in each slice
-                i = 0
-                for key, limit in config['splittings'].iteritems():
-                    data['slices'][done:done+n_gal][:,i] = -1 # null value
-                    if config['split_type'] == 'shape':
-                        values = getValues(shapes_lens, key, config['functions'])
-                        for s in xrange(len(limit)-1):
-                            mask = getSliceMask(values, limit[s], limit[s+1])
-                            data['slices'][done:done+n_gal][:,i][mask] = s
-                            del mask
-                        del values
-                    elif config['split_type'] == 'lens':
-                        value = getValues(lens, key, config['functions'])
-                        for s in xrange(len(limit)-1):
-                            # each lens can only be in one slice per key
-                            if getSliceMask(value, limit[s], limit[s+1]):
-                                data['slices'][done:done+n_gal][:,i] = s
-                                break
-                    i += 1
+                    # get indices for all sources in each slice
+                    i = 0
+                    for key, limit in config['splittings'].iteritems():
+                        data['slices'][done:done+n_gal][:,i] = -1 # null value
+                        if config['split_type'] == 'shape':
+                            values = getValues(shapes_lens, key, config['functions'])
+                            for s in xrange(len(limit)-1):
+                                mask = getSliceMask(values, limit[s], limit[s+1])
+                                data['slices'][done:done+n_gal][:,i][mask] = s
+                                del mask
+                            del values
+                        elif config['split_type'] == 'lens':
+                            value = getValues(lens, key, config['functions'])
+                            for s in xrange(len(limit)-1):
+                                # each lens can only be in one slice per key
+                                if getSliceMask(value, limit[s], limit[s+1]):
+                                    data['slices'][done:done+n_gal][:,i] = s
+                                    break
+                        i += 1
 
-                done += n_gal
-                del shapes_lens, gt, gx, zs_bin, sensitivity
+                    done += n_gal
+                    del shapes_lens, gt, gx, zs_bin, sensitivity
 
             # finish up
             os.system('rm ' + matchfile)

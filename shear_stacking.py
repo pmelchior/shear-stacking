@@ -149,7 +149,7 @@ def getBeta(z_c, z):
         return cosmo.Da(z, z_c)/cosmo.Da(z)  
 
 def getSigmaCrit(z_c, z):
-    c2_4piG = 4. # in 1e14 M_solar / Mpc^2 (since cosmo.Da comes in units of c/H0)
+    c2_4piG = 3.882 # in 1e14 M_solar / Mpc^2 (since cosmo.Da comes in units of c/H0)
     return c2_4piG / getBeta(z_c, z) / cosmo.Da(z_c)
 
 # From Troxel: <Sigma_crit ^-power w> / <w> for each photo-z bin
