@@ -169,6 +169,18 @@ def getWZ(power=1):
         data['bin%d' % b] /= c2_4piG**power
     return data
 
+
+# join to names arrays of with different columns but same number of rows
+# if column names are identical, those of data1 will prevail
+def joinDataSets(data1, data2):
+    from numpy.lib import recfunctions
+    columns = data1.dtype.names
+    columns_ = []
+    for col in data2.dtype.names:
+        if col not in columns:
+            columns_.append(col)
+    return recfunctions.rec_append_fields(data1, columns_, [data2[c] for c in columns_])
+
 def getShapeCatalog(config, verbose=False, chunk_index=None):
     # open shapes file(s)
     shapefile = config['shape_file']
@@ -225,13 +237,7 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
 
     # if there's an extra file: join data with shapes
     if extra is not None:
-        from numpy.lib import recfunctions
-        columns = shapes.dtype.names
-        ecolumns = []
-        for col in extra.dtype.names:
-            if col not in columns:
-                ecolumns.append(col)
-        shapes = recfunctions.rec_append_fields(shapes, ecolumns, [extra[c] for c in ecolumns])
+        shapes = joinDataSets(shapes, extra)
     return shapes
 
 def getLensCatalog(config, verbose=False):
@@ -239,6 +245,7 @@ def getLensCatalog(config, verbose=False):
     hdu = fitsio.FITS(lensfile)
     if verbose:
         print "opening lensfile %s (%d entries)" % (lensfile, hdu[1].get_nrows())
+    mask = None
     if len(config['lens_cuts']) == 0:
         lenses = hdu[1][:]
     else:
@@ -248,9 +255,23 @@ def getLensCatalog(config, verbose=False):
             print "selecting %d lenses" % mask.size
         lenses = hdu[1][mask]
     hdu.close()
-    
     if verbose:
         print "lens sample: %d" % lenses.size
+
+    # see if there's an extra file
+    try:
+        hdu = fitsio.FITS(config['lens_extra_file'])
+        if verbose:
+            print "opening extra lensfile %s (%d entries)" % (config['lens_extra_file'], hdu[1].get_nrows())
+        if mask is None:
+            extra = hdu[1][:]
+        else:
+            extra = hdu[1][mask]
+        hdu.close()
+        lenses = joinDataSets(lenses, extra)
+    except (KeyError, IOError) as exc: # not in config or file doesn't exist
+        pass
+    
     return lenses
 
 from struct import unpack

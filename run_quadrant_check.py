@@ -37,6 +37,22 @@ if __name__ == '__main__':
         if exc.errno == errno.EEXIST and os.path.isdir(outdir):
             pass
         else: raise
+
+    # see if we need to do anything
+    append_to_extra = False
+    try:
+        hdu = fitsio.FITS(config['lens_extra_file'])
+        columns = hdu[1].get_colnames()
+        hdu.close()
+        if 'quad_flags' in columns:
+            print "Quadrant check flags already in " + config['lens_extra_file']
+            print "Delete file if you want to regenerate them."
+            raise SystemExit
+        else:
+            append_to_extra = True
+    except (KeyError, IOError) as exc: # not in config or file doesn't exist
+        pass
+    
     
     # open shape catalog
     shapefile = config['shape_file']
@@ -104,12 +120,22 @@ if __name__ == '__main__':
                 data['quad_ellip'][i] = dmap_.get_quad_ellip(lens['RA'], lens['DEC'], radius_degrees[i])
         
         # save result as table
-        lensfile = config['lens_file']
-        basename = os.path.basename(lensfile)
-        basename = ".".join(basename.split(".")[:-1])
-        quadfile = outdir + basename + '_quadrant-check.fits'
-        fits = fitsio.FITS(quadfile, 'rw', clobber=True)
-        fits.write(data)
-        fits.close()
-        print "created quadrant check file %s" % quadfile
-        
+        if append_to_extra == False:
+            lensfile = config['lens_file']
+            basename = os.path.basename(lensfile)
+            basename = ".".join(basename.split(".")[:-1])
+            quadfile = outdir + basename + '_quadrant-check.fits'
+            fits = fitsio.FITS(quadfile, 'rw', clobber=True)
+            fits.write(data)
+            fits.close()
+            print "created quadrant check file %s" % quadfile
+
+            if 'lens_extra_file' not in config.keys():
+                print "\nBefore proceeding: add"
+                print "    \"lens_extra_file\": \"%s\"" % quadfile
+                print "to your config file!"
+        else:
+            fits = fitsio.FITS(config['lens_extra_file'], 'rw')
+            fits[1].insert_column('quad_flags', data['quad_flags'])
+            fits[1].insert_column('quad_ellip', data['quad_ellip'])
+            fits.close()    
