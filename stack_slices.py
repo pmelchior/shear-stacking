@@ -20,6 +20,26 @@ def getSliceMask(values, lower, upper, return_num=False):
     else:
         return sum((values >= lower) & (values < upper))
 
+def getQuadrantMask(lens, shapes, quad_flags):
+    # no quadrant pairs OK
+    if quad_flags == 0:
+        return []
+    
+    # not all quadrant pairs are OK
+    if quad_flags != (2**1 + 2**2 + 2**3 + 2**4):
+        mask = np.zeros(shapes_lens.size, dtype='bool')
+        if quad_flags & 2 != 0:
+            mask |= shapes_lens[config['shape_dec_key']] < lens['DEC']
+        if quad_flags & 4 != 0:
+            mask |= shapes_lens[config['shape_ra_key']] > lens['RA']
+        if quad_flags & 8 != 0:
+            mask |= shapes_lens[config['shape_dec_key']] > lens['DEC']
+        if quad_flags & 16 != 0:
+            mask |= shapes_lens[config['shape_ra_key']] < lens['RA']
+        return mask
+    else:
+        return np.ones(shapes.size, dtype='bool')
+        
 if __name__ == '__main__':
     # parse inputs
     try:
@@ -63,6 +83,8 @@ if __name__ == '__main__':
 
         # open lens catalog
         lenses = getLensCatalog(config, verbose=True)
+        # do we have the column for the quadrant check?
+        do_quadrant_check = 'quad_flags' in lenses.dtype.names
 
         # find all galaxies in shape catalog within maxrange arcmin 
         # of each lens center
@@ -95,6 +117,12 @@ if __name__ == '__main__':
             for m1, m2, d12 in htmf.matches():
                 lens = lenses[m1]
                 shapes_lens = shapes[m2]
+                # check which sources around a lens we can use
+                if do_quadrant_check:
+                    quad_flags = lens['quad_flags']
+                    mask = getQuadrantMask(lens, shapes, quad_flags)
+                    shapes_lens = shapes_lens[mask]
+                    d12 = np.array(d12)[mask]
                 n_gal = shapes_lens.size
 
                 # compute tangential and cross shear
@@ -139,11 +167,12 @@ if __name__ == '__main__':
                                 data['slices'][done:done+n_gal][:,i] = s
                                 break
                     i += 1
-                    
-                done += n_gal
-                del lens, shapes_lens, gt, gx, zs_bin, sensitivity
-            os.system('rm ' + matchfile)
 
-            fits.write(data)
+                done += n_gal
+                del shapes_lens, gt, gx, zs_bin, sensitivity
+
+            # finish up
+            os.system('rm ' + matchfile)
+            fits.write(data[:done])
             fits.close()
             print "done. Created " + stackfile
