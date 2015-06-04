@@ -38,6 +38,10 @@ if __name__ == '__main__':
             pass
         else: raise
 
+    if config['coords'] not in ['angular', 'physical']:
+        print "config: specify either 'angular' or 'physical' coordinates"
+        raise SystemExit
+    
     # see if we need to do anything
     append_to_extra = False
     try:
@@ -100,8 +104,13 @@ if __name__ == '__main__':
         # less than 0.05
         ellip_max=0.05
         data = np.zeros(lenses.size, dtype=[('quad_flags', 'i1')])
-        # 30 Mpc/h outer radius
-        radius_degrees = Dist2Ang(30., lenses[config['lens_z_key']])
+
+        # match the outer radius to the range asked for stacking
+        if config['coords'] == "physical":
+            radius_degrees = Dist2Ang(config['maxrange'], lenses[config['lens_z_key']])
+        else:
+            radius_degrees = config['maxrange'] * np.ones(lenses.size)
+            
         for i in xrange(lenses.size):
             lens = lenses[i]
             zl = lens[config['lens_z_key']]
