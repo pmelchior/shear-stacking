@@ -109,7 +109,7 @@ if __name__ == '__main__':
         if Nmatch:
             print "stacking lenses..."
             fits = fitsio.FITS(stackfile, 'rw', clobber=True)
-            data = np.empty(Nmatch, dtype=[('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
+            data = np.empty(Nmatch, dtype=[('lens_index', 'i8'), ('radius_angular', 'f4'), ('radius_physical', 'f4'), ('DeltaSigma', 'f8'), ('DeltaSigma_x', 'f8'), ('sensitivity', 'f8'), ('weight', 'f8'), ('slices', '%di1' % len(config['splittings']))])
             
             # get effective lensing weights (w * Sigma_crit ^-1 or -2)
             wz1 = getWZ(power=1)
@@ -131,6 +131,7 @@ if __name__ == '__main__':
                     # compute tangential and cross shear
                     gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
 
+                    data['lens_index'][done:done+n_gal] = m1
                     data['DeltaSigma'][done:done+n_gal] = gt
                     data['DeltaSigma_x'][done:done+n_gal] = gx
                     data['radius_angular'][done:done+n_gal] = d12
