@@ -172,14 +172,18 @@ def getWZ(power=1):
 
 # join to names arrays of with different columns but same number of rows
 # if column names are identical, those of data1 will prevail
+# FIXME: does not work if data2 has non-trivial dtypes (e.g. multi-dim array)
 def joinDataSets(data1, data2):
     from numpy.lib import recfunctions
-    columns = data1.dtype.names
+    columns = data1.dtype.names    
     columns_ = []
-    for col in data2.dtype.names:
+    dtypes_ = []
+    for i in xrange(len(data2.dtype.names)):
+        col = data2.dtype.names[i]
         if col not in columns:
             columns_.append(col)
-    return recfunctions.rec_append_fields(data1, columns_, [data2[c] for c in columns_])
+            dtypes_.append(data2.dtype[col])
+    return recfunctions.rec_append_fields(data1, columns_, [data2[c] for c in columns_], dtypes=dtypes_)
 
 def getShapeCatalog(config, verbose=False, chunk_index=None):
     # open shapes file(s)

@@ -99,14 +99,15 @@ if __name__ == '__main__':
         # make sure weighted position ellipticity in adjacent quadrants
         # less than 0.05
         ellip_max=0.05
-        data = np.zeros(lenses.size, dtype=[('quad_flags', 'i1'), ('quad_ellip', '4f4')])
+        data = np.zeros(lenses.size, dtype=[('quad_flags', 'i1')])
         # 30 Mpc/h outer radius
         radius_degrees = Dist2Ang(30., lenses[config['lens_z_key']])
         for i in xrange(lenses.size):
             lens = lenses[i]
             zl = lens[config['lens_z_key']]
             # use the dmap the is has shapes from bin above the cluster redshift
-            # FIXME:we lose all clusters above 0.85, but that's a small fraction
+            # FIXME: we lose all clusters above 0.85, but that's only
+            # a small fraction
             dmap_ = None
             for b in xrange(3):
                 zmin = zbin_edges[b]
@@ -116,8 +117,7 @@ if __name__ == '__main__':
                     break
             # get quadrant ellipticty and mask flags
             if dmap_ is not None:
-                data['quad_flags'][i] = dmap_.check_quad(lens['RA'], lens['DEC'], radius_degrees[i], ellip_max)
-                data['quad_ellip'][i] = dmap_.get_quad_ellip(lens['RA'], lens['DEC'], radius_degrees[i])
+                data['quad_flags'][i] = dmap_.check_quad(lens[config['lens_ra_key']], lens[config['lens_dec_key']], radius_degrees[i], ellip_max)
         
         # save result as table
         if append_to_extra == False:
@@ -137,5 +137,4 @@ if __name__ == '__main__':
         else:
             fits = fitsio.FITS(config['lens_extra_file'], 'rw')
             fits[1].insert_column('quad_flags', data['quad_flags'])
-            fits[1].insert_column('quad_ellip', data['quad_ellip'])
             fits.close()    

@@ -20,7 +20,7 @@ def getSliceMask(values, lower, upper, return_num=False):
     else:
         return sum((values >= lower) & (values < upper))
 
-def getQuadrantMask(lens, shapes):
+def getQuadrantMask(lens, shapes, config):
     quad_flags = lens['quad_flags']
     # no quadrant pairs OK
     if quad_flags <= 1:
@@ -35,13 +35,13 @@ def getQuadrantMask(lens, shapes):
     # e.g. if all sources are in the top half, but quad_flags & 2 > 0,
     # then no source will be selected even if quad_flags & 8 > 0
     if quad_flags & 2 > 0:
-        return shapes[config['shape_dec_key']] > lens['DEC']
+        return shapes[config['shape_dec_key']] > lens[config['lens_dec_key']]
     if quad_flags & 4 > 0:
-        return shapes[config['shape_ra_key']] < lens['RA']
+        return shapes[config['shape_ra_key']] < lens[config['lens_ra_key']]
     if quad_flags & 8 > 0:
-        return shapes[config['shape_dec_key']] < lens['DEC']
+        return shapes[config['shape_dec_key']] < lens[config['lens_dec_key']]
     if quad_flags & 16 > 0:
-        return shapes[config['shape_ra_key']] > lens['RA']
+        return shapes[config['shape_ra_key']] > lens[config['lens_ra_key']]
         
 if __name__ == '__main__':
     # parse inputs
@@ -99,7 +99,8 @@ if __name__ == '__main__':
 
             h = eu.htm.HTM(8)
             matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
-            h.match(lenses['RA'], lenses['DEC'], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+            h.match(lenses[config['lens_ra_key']], lenses[config['lens_dec_key']], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+            print 'matched'
             htmf = HTMFile(matchfile)
             Nmatch = htmf.n_matches
             print "  found ", Nmatch, "matches"
@@ -122,14 +123,14 @@ if __name__ == '__main__':
                 shapes_lens = shapes[m2]
                 # check which sources around a lens we can use
                 if do_quadrant_check:
-                    mask = getQuadrantMask(lens, shapes_lens)
+                    mask = getQuadrantMask(lens, shapes_lens, config)
                     shapes_lens = shapes_lens[mask]
                     d12 = np.array(d12)[mask]
                 n_gal = shapes_lens.size
 
                 if n_gal:
                     # compute tangential and cross shear
-                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens['RA'], lens['DEC'], computeB=True)
+                    gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens[config['lens_ra_key']], lens[config['lens_dec_key']], computeB=True)
 
                     data['lens_index'][done:done+n_gal] = m1
                     data['DeltaSigma'][done:done+n_gal] = gt
