@@ -60,21 +60,12 @@ if __name__ == '__main__':
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
 
-    outdir = os.path.dirname(configfile)
-    if outdir[-1] != '/':
-        outdir += '/'
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else: raise
-
     if config['coords'] not in ['angular', 'physical']:
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
 
     # open shape catalog
+    outdir = os.path.dirname(configfile) + "/"
     shapefile = config['shape_file']
     shapes = getShapeCatalog(config, verbose=True, chunk_index=chunk_index)
 
@@ -100,7 +91,6 @@ if __name__ == '__main__':
             h = eu.htm.HTM(8)
             matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
             h.match(lenses[config['lens_ra_key']], lenses[config['lens_dec_key']], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
-            print 'matched'
             htmf = HTMFile(matchfile)
             Nmatch = htmf.n_matches
             print "  found ", Nmatch, "matches"
@@ -143,7 +133,7 @@ if __name__ == '__main__':
                     # where wz1 and wz2 are the effective weights at given lens z
                     zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
                     sensitivity = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
-                    for b in xrange(3): # 3 bins
+                    for b in np.unique(zs_bin):
                         wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
                         wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
                         mask = zs_bin == b
