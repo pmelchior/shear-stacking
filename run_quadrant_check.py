@@ -28,16 +28,6 @@ if __name__ == '__main__':
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
 
-    outdir = os.path.dirname(configfile)
-    if outdir[-1] != '/':
-        outdir += '/'
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else: raise
-
     if config['coords'] not in ['angular', 'physical']:
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
@@ -59,7 +49,9 @@ if __name__ == '__main__':
     
     
     # open shape catalog
+    outdir = os.path.dirname(configfile) + "/"
     shapefile = config['shape_file']
+
     # since all selection are normally in the extra file (if present)
     # we speed up the process by changing extra and shape and dropping shape
     try:
@@ -97,6 +89,9 @@ if __name__ == '__main__':
             dmaps.append(hu.readDensityMap(densityfile))
         
         # open lens catalog for quadrant check
+        # we need to remove any lens cuts since we want the check for all
+        # lenses in the lens_file
+        config['lens_cuts'] = []
         lenses = getLensCatalog(config, verbose=True)
 
         # check quadrants around the input points

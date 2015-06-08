@@ -9,7 +9,7 @@ import esutil as eu
 from sys import argv
 from shear_stacking import *
 from glob import glob
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
@@ -33,17 +33,49 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
-def makeEBProfile(ax, key_name, profile_E, profile_B, coords, lw=1):
-    mean_r, n, mean_q, std_q = profile_B.getProfile()
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='r', marker='.', label='B-mode', lw=lw)
-    mean_r, n, mean_q, std_q = profile_E.getProfile()
-    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='E-mode', lw=lw)
+def computeMeanStdForProfile(profile, name, n_jack=0):
+    # use build-in method to calculate in-bin means and dispersions
+    if n_jack == 0:
+        return profile[name].getProfile()
+    else: # jackknife
+        q = []
+        r = []
+        missing = []
+        for i in xrange(n_jack):
+            r_, n_, q_, std_q = profile[i][name].getProfile()
+            if i == 0:
+                n = n_
+            else:
+                n += n_
+            missing.append(n_ == 0)
+            q.append(q_)
+            r.append(r_)
+
+        missing = np.array(missing)
+        r = np.ma.masked_array(r, mask=missing)
+        q = np.ma.masked_array(q, mask=missing)
+        mean_r = r.mean(axis=0)
+        mean_q = q.mean(axis=0)
+        # prefactor of varianceneeds to be corrected for available data
+        # in each radial bin
+        n_avail = n_jack - missing.sum(axis=0)
+        std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
+        return mean_r, n, mean_q, std_q
+
+def makeEBProfile(ax, profile, coords, n_jack=0, lw=1):
+    colors = getColors(3)
+    mean_r, n, mean_q, std_q = computeMeanStdForProfile(profile, 'all_E', n_jack=n_jack)
+    ax.errorbar(mean_r, mean_q, yerr=std_q, c='k', marker='.', label='E-mode', lw=lw, zorder=10)
+    mean_r, n, mean_qb, std_qb = computeMeanStdForProfile(profile, 'all_B', n_jack=n_jack)
+    ax.errorbar(mean_r, mean_qb, yerr=std_qb, c=colors[1], marker='.', label='B-mode', lw=lw, zorder=9)
+    print n.sum()
 
     xlim = ax.get_xlim()
     if coords == "angular":
         ax.plot(xlim, [0,0], 'k:')
         ax.set_xlim(xlim)
-    ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
+    title = r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n.sum()/1e9)
+    legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
@@ -92,14 +124,7 @@ def makeSlicedProfile(ax, key_name, profiles, limits, coords, xlim, ylim, lw=1):
     else:
         ax.set_xlabel('Radius [arcmin]')
 
-def readNbin(stackfile, profile, coords):
-    print "opening file " + stackfile
-    fits = fitsio.FITS(stackfile)
-    data = fits[1].read()
-
-    if coords == "angular":
-        data['radius_angular'] *= 60
-
+def insertIntoProfile(data, profile, config):
     # total profiles (E and B mode)
     profile['all_E'].insert(data['radius_' + config['coords']], data['DeltaSigma'], data['weight'], data['sensitivity'])
     profile['all_B'].insert(data['radius_' + config['coords']], data['DeltaSigma_x'], data['weight'], data['sensitivity'])
@@ -111,11 +136,63 @@ def readNbin(stackfile, profile, coords):
             profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask], data['sensitivity'][mask])
             del mask
         i += 1
+        
+def readIntoProfile(stackfile, profile, config, regions=None):
+    print "opening file " + stackfile
+    try:
+        fits = fitsio.FITS(stackfile)
+        data = fits[1].read()
 
-    # clean up
-    fits.close()
-    del data
+        if config['coords'] == "angular":
+            data['radius_angular'] *= 60
+
+        if regions is None:
+            insertIntoProfile(data, profile, config)
+        else:
+            # select only data from lenses in given region
+            for r in xrange(len(regions)):
+                mask = np.in1d(data['lens_index'], regions[r], invert=True)
+                if mask.sum():
+                    insertIntoProfile(data[mask], profile[r], config)
+
+        # clean up
+        fits.close()
+        del data
+    except:
+        print "  trouble opening! skipping..."
     return profile
+
+def createProfiles(bins, config, n_jack=0):
+    # create empty profiles for each of the jackknife regions
+    if n_jack > 1:
+        profile = []
+        for i in xrange(n_jack):
+            profile.append(createProfiles(bins, config))
+        return profile
+
+    # create profile for E/B mode of all data
+    # and for each slice defined
+    profile = {'all_E': BinnedScalarProfile(bins),
+               'all_B': BinnedScalarProfile(bins)
+           }
+    for key, limit in config['splittings'].iteritems():
+        profile[key] = []
+        for s in xrange(len(limit)-1):
+            profile[key].append(BinnedScalarProfile(bins))
+    return profile
+
+# simple helper function: for each key in profile structure, append profile2
+def appendProfile(profile, profile2, config, n_jack=0):
+    # for jackknifes: split into regions
+    if n_jack > 1:
+        for i in xrange(n_jack):
+            appendProfile(profile[i], profile2[i], config)
+    else:
+        profile['all_E'] += profile2['all_E']
+        profile['all_B'] += profile2['all_B']
+        for key, limit  in config['splittings'].iteritems():
+            for s in xrange(len(limit)-1):
+                profile[key][s] += profile2[key][s] 
 
 if __name__ == '__main__':
     # parse inputs
@@ -123,7 +200,7 @@ if __name__ == '__main__':
         configfile = argv[1]
         coords = argv[2]
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <angular/physical> [outdir]"
+        print "usage: " + argv[0] + " <config file> <angular/physical> [jackknife regions]"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -133,24 +210,18 @@ if __name__ == '__main__':
     except IOError:
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
+    
     if coords not in ['angular', 'physical']:
         print "specify either angular or physical coordinates"
         raise SystemExit
 
-    indir = os.path.dirname(configfile)
     if len(argv) > 3:
-        outdir = argv[3]
+        n_jack = int(argv[3])
     else:
-        outdir = indir
-    if outdir[-1] != '/':
-        outdir += '/'
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else: raise
+        n_jack = 0
 
+    indir = os.path.dirname(configfile) + "/"
+    outdir = indir
     stackfiles = glob(indir + '/*_DeltaSigma*.fits')
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
@@ -161,36 +232,53 @@ if __name__ == '__main__':
     else:
         bins = np.arange(1,11,1) #config['maxrange']*60, 2)
 
-    # set up containers
-    profile = {'all_E': BinnedScalarProfile(bins),
-               'all_B': BinnedScalarProfile(bins)
-               }
-    for key, limit in config['splittings'].iteritems():
-        profile[key] = []
-        for s in xrange(len(limit)-1):
-            profile[key].append(BinnedScalarProfile(bins))
-    initprofile = copy.deepcopy(profile)
-    keys = config['splittings'].keys()
+    # if jacknife errors are desired: create jackknife regions from
+    # the lens file by k-means clustering and assign each lens
+    # to the nearest k-means center
+    regions = None
+    if n_jack:
+        print "defining %d jackknife regions" % n_jack
+        import kmeans_radec
+        lenses = getLensCatalog(config, verbose=True)
+        radec = np.dstack((lenses[config['lens_ra_key']], lenses[config['lens_dec_key']]))[0]
+        maxiter=100
+        tol=1.0e-5
+        km=kmeans_radec.kmeans_sample(radec, n_jack, maxiter=maxiter, tol=tol)
+        if not km.converged:
+            raise RuntimeError("k means did not converge")
+        
+        # define regions: ids of lenses assigned to each k-means cluster
+        labels = km.find_nearest(radec)
+        regions = []
+        lens_ids = np.arange(lenses.size)
+        for l in xrange(n_jack):
+            regions.append(lens_ids[labels == l])
 
-    # iterate thru all DeltaSigma files
-    n_processes = min(len(stackfiles), 8)
+    # set up containers
+    profile = createProfiles(bins, config, n_jack=n_jack)
+    # need a deep copy of the empty structure for each of the threads
+    initprofile = copy.deepcopy(profile)
+
+    # iterate thru all DeltaSigma files: distribute them over given radial bins
+    n_processes = min(6, cpu_count())
+    if n_jack:
+        n_processes = cpu_count()
     pool = Pool(processes=n_processes)
-    results = [pool.apply_async(readNbin, (stackfile, initprofile, coords)) for stackfile in stackfiles]
+    results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, regions)) for stackfile in stackfiles]
     for r in results:
-        thisprofile = r.get()
-        profile['all_E'] += thisprofile['all_E']
-        profile['all_B'] += thisprofile['all_B']
-        for key, limit  in config['splittings'].iteritems():
-            for s in xrange(len(limit)-1):
-                profile[key][s] += thisprofile[key][s] 
+        profile_ = r.get()
+        appendProfile(profile, profile_, config, n_jack=n_jack)
         
     # plot generation: E/B profile
-    plotfile = outdir + 'shear_stack_EB_' + coords + '.png'
+    ending = ".png"
+    if n_jack:
+        ending = ("_jackknife_%d" % n_jack) + ending 
+    plotfile = outdir + 'shear_stack_EB_' + coords + ending
     print plotfile
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
-    mean_r, n, mean_q, std_q = makeEBProfile(ax, 'all', profile['all_E'], profile['all_B'], coords)
+    mean_r, n, mean_q, std_q = makeEBProfile(ax, profile, coords, n_jack=n_jack)
     pivot = (mean_q + std_q/2)[n > 0].max()
     if coords == "physical":
         xlim = (1e-2, mean_r[n > 0].max()*2)
@@ -200,16 +288,18 @@ if __name__ == '__main__':
         ylim = (-0.15*pivot, 1.25*pivot)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
+    fig.subplots_adjust(wspace=0, hspace=0, left=0.17, bottom=0.13, right=0.98, top=0.98)
     fig.savefig(plotfile)
 
+    """
     # sliced profile plots
     for key, limit in config['splittings'].iteritems():
         print "  " + key
-        plotfile = outdir + 'shear_stack_' + key + '_' + coords + '.png'
+        plotfile = outdir + 'shear_stack_' + key + '_' + coords + ending
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
         makeSlicedProfile(ax, key, profile[key], config['splittings'][key], coords, xlim, ylim)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         fig.savefig(plotfile)
+    """
 

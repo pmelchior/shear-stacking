@@ -35,7 +35,7 @@ class WeightedMeanVar:
             else:
                 return self.WiXi / self.Wi
         else:
-            return None
+            return 0
     def getStd(self):
         if self.Wi > 0:
             if self.WiSi > 0:
@@ -46,7 +46,7 @@ class WeightedMeanVar:
             else:
                 return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.Wi))**0.5
         else:
-            return None
+            return 0
     def insert(self, X, W, S=None):
         if X.size:
             self.N += X.size
@@ -97,11 +97,10 @@ class BinnedScalarProfile:
             n[i] = self.Q[i].N
             if n[i] > 0:
                 r[i] = self.R[i] / n[i]
-            else:
-                r[i] = None
-            mean_q[i] = self.Q[i].getMean()
-            std_q[i] = self.Q[i].getStd()
+                mean_q[i] = self.Q[i].getMean()
+                std_q[i] = self.Q[i].getStd()
         return r, n, mean_q, std_q
+    """
     def getSummmedProfile(self):
         mean_q = np.empty(len(self.bins)-1)
         std_q = np.empty(len(self.bins)-1)
@@ -111,13 +110,14 @@ class BinnedScalarProfile:
             n[i] = self.Q[i].N
             if n[i] > 0:
                 r[i] = self.R[i] / n[i]
-                mean_q[i] = self.Q[i].WiXi / (3.14*(self.bins[i+1]**2 - self.bins[i]**2))
+                mean_q[i] = self.Q[i].WiXi / (np.pi*(self.bins[i+1]**2 - self.bins[i]**2))
                 std_q[i] = ((self.Q[i].Wi*self.Q[i].WiXi2 - self.Q[i].WiXi**2) / (self.Q[i].N - 1) * self.Q[i].N)**0.5
             else:
-                r[i] = None
-                mean_q[i] = None
-                std_q[i] = None
+                r[i] = 0
+                mean_q[i] = 0
+                std_q[i] = 0
         return r, n, mean_q, std_q
+    """
 
 # extrapolation function from
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range
@@ -164,7 +164,7 @@ def getWZ(power=1):
         filename = 'invsigcrit2-skynetsmooth6-false_z_mean.txt'
     data = np.genfromtxt(thisdir + '/data/' + filename, dtype=[('z', 'float32'), ('bin0', 'float32'), ('bin1', 'float32'), ('bin2', 'float32')])
 
-    c2_4piG = 1.654e4 # in 1e14 M_solar / Mpc, for distances in Mpc
+    c2_4piG = 1.661e4 # in 1e14 M_solar / Mpc, for distances in Mpc
     for b in xrange(3):
         data['bin%d' % b] /= c2_4piG**power
     return data
