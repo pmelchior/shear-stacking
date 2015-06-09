@@ -136,30 +136,51 @@ def insertIntoProfile(data, profile, config):
             profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask], data['sensitivity'][mask])
             del mask
         i += 1
-        
-def readIntoProfile(stackfile, profile, config, regions=None):
+
+def jackknife_masks(ids, region, n_jack):
+    # jackknife region for each cluster
+    rids = np.zeros(ids.size, dtype='uint8')
+    start = 0
+    stop = 0
+    current_id = ids[0]
+    for i in xrange(1, ids.size):
+        stop = i
+        if ids[i] != current_id:
+            rids[start:stop] = region[current_id]
+            current_id = ids[i]
+            start = i
+    # last segment cannot complete
+    rids[start:] = region[current_id]
+
+    # allow everything but region i
+    masks = []
+    for i in xrange(n_jack):
+        masks.append(rids != i)
+    return masks
+
+def readIntoProfile(stackfile, profile, config, n_jack=0, region=None):
     print "opening file " + stackfile
-    try:
+    #try:
+    if True:
         fits = fitsio.FITS(stackfile)
         data = fits[1].read()
 
         if config['coords'] == "angular":
             data['radius_angular'] *= 60
 
-        if regions is None:
+        if n_jack < 2:
             insertIntoProfile(data, profile, config)
         else:
             # select only data from lenses in given region
-            for r in xrange(len(regions)):
-                mask = np.in1d(data['lens_index'], regions[r], invert=True)
-                if mask.sum():
-                    insertIntoProfile(data[mask], profile[r], config)
+            masks = jackknife_masks(data['lens_index'], region, n_jack=n_jack)
+            for i in xrange(n_jack):
+                insertIntoProfile(data[masks[i]], profile[i], config)
 
         # clean up
         fits.close()
         del data
-    except:
-        print "  trouble opening! skipping..."
+    #except:
+    #    print "  trouble opening! skipping..."
     return profile
 
 def createProfiles(bins, config, n_jack=0):
@@ -222,7 +243,7 @@ if __name__ == '__main__':
 
     indir = os.path.dirname(configfile) + "/"
     outdir = indir
-    stackfiles = glob(indir + '/*_DeltaSigma*.fits')
+    stackfiles = glob(indir + '/*_DeltaSigma*.fits')[:12]
     if len(stackfiles) == 0:
         print "run stack_slices.py before!"
         raise SystemExit
@@ -235,7 +256,7 @@ if __name__ == '__main__':
     # if jacknife errors are desired: create jackknife regions from
     # the lens file by k-means clustering and assign each lens
     # to the nearest k-means center
-    regions = None
+    region = None
     if n_jack:
         print "defining %d jackknife regions" % n_jack
         import kmeans_radec
@@ -248,11 +269,7 @@ if __name__ == '__main__':
             raise RuntimeError("k means did not converge")
         
         # define regions: ids of lenses assigned to each k-means cluster
-        labels = km.find_nearest(radec)
-        regions = []
-        lens_ids = np.arange(lenses.size)
-        for l in xrange(n_jack):
-            regions.append(lens_ids[labels == l])
+        region  = km.find_nearest(radec)
 
     # set up containers
     profile = createProfiles(bins, config, n_jack=n_jack)
@@ -264,7 +281,7 @@ if __name__ == '__main__':
     if n_jack:
         n_processes = cpu_count()
     pool = Pool(processes=n_processes)
-    results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, regions)) for stackfile in stackfiles]
+    results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, n_jack, region)) for stackfile in stackfiles]
     for r in results:
         profile_ = r.get()
         appendProfile(profile, profile_, config, n_jack=n_jack)
@@ -272,7 +289,7 @@ if __name__ == '__main__':
     # plot generation: E/B profile
     ending = ".png"
     if n_jack:
-        ending = ("_jackknife_%d" % n_jack) + ending 
+        ending = ("_jackknife-test_%d" % n_jack) + ending 
     plotfile = outdir + 'shear_stack_EB_' + coords + ending
     print plotfile
     setTeXPlot(sampling=2)
