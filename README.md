@@ -7,18 +7,19 @@ Usage
 -----
 
 ```
+python run_quadrant_check.py test/config.json
 python stack_slices.py test/config.json
-python plot_slices.py test/config.json physical
+python create_profiles.py test/config.json physical [40]
+python plot_profiles.py test/config.json physical
 ```
 
-The first command opens the config file, creates FITS tables for each of the shape catalogs listed in the config file, and stores them in the directory `test/`. The second command, uses the output of the first and generates stacked shear profiles (in either `angular` or `physical` units) for each of the source slices and stores them in the directory `test/`. After that, all `*.fits` files in `test/` can be deleted, or the script can be rerun with modified binning/colors...
+This is a typical session. The first command performs the quadrant check, which ensures that each lens in the respective catalog has at least 2 adjacent quadrants of sources within the `maxrange` of the stacks to ensure cancellation of additive shear systematics. This step is optional but recommended. It create another fits file, and you will need to add it as `lens_extra_file` to the config file.
 
-Note that the plotting script may choose to display different coordinates than those that were used to determine the maximum distance between lens and source during the stacking step, which is set in the config file. At short distances, this normally does not matter, but at large distances using different coordinates for plotting and stacking will lead to suboptimal results.
+The second command opens the config file, creates FITS tables for each of the shape catalogs listed in the config file, and stores them in the directory `test/`.
 
-```
-python stack_slices.py test/config.json shape_catalog.fits
-```
-Overrides the default shape catalog selection in the config file and only works on `shape_catalog.fits`.
+The third command uses the output of the second and generates stacked shear profiles (in either `angular` or `physical` units) for all sources and for each of the splittings specified in the config file, and stores all of them as `.npz` files in the directory `test/`. Note that the script may choose to display different coordinates than those that were used to determine the maximum distance between lens and source during the stacking step, which is set in the config file. At short distances, this normally does not matter, but at large distances using different coordinates for plotting and stacking will lead to suboptimal results. As optional last parameter you can give the number of spatial jackknife regions for the error estimate. If not provided, in-bin dispersion is computed, which does not take cosmic variance into account. After this step, all `*.fits` files in `test/` can be deleted, or the script can be rerun with modified binning.
+
+The forth command simply takes the `.npz` files and creates the desired plots.
 
 Configuration file format
 -------------------------
