@@ -16,32 +16,31 @@ def computeMeanStdForProfile(profile, name, s=None, n_jack=0):
             return profile[name][s].getProfile()
     else: # jackknife
         q = []
-        r = []
         missing = []
         for i in xrange(n_jack):
             if s is None:
                 r_, n_, q_, std_q = profile[i][name].getProfile()
             else:
                 r_, n_, q_, std_q = profile[i][name][s].getProfile()
-            if i == 0:
-                n = n_
-            else:
-                n += n_
             missing.append(n_ == 0)
             q.append(q_)
-            r.append(r_)
-
         missing = np.array(missing)
-        r = np.ma.masked_array(r, mask=missing)
         q = np.ma.masked_array(q, mask=missing)
-        mean_r = r.mean(axis=0)
         mean_q = q.mean(axis=0)
-        # prefactor of varianceneeds to be corrected for available data
-        # in each radial bin
+
+        # result for normal/non-jackknife profile
+        if s is None:
+            mean_r, n, mean0, std_q = profile[-1][name].getProfile()
+        else:
+            mean_r, n, mean0, std_q = profile[-1][name][s].getProfile()
+        mask = (n>0)
+
+        # variance and bias-corrected mean needs number of actual jackknifes:
+        # to be corrected for available data in each radial bin
         n_avail = n_jack - missing.sum(axis=0)
+        mean_q = n_avail*mean0 - (n_avail - 1)*mean_q
         std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
-        mask = ~mean_q.mask
-        return mean_r.compressed(), n[mask], mean_q.compressed(), std_q.compressed()
+        return mean_r[mask], n[mask], mean_q.data[mask], std_q.data[mask]
 
 def insertIntoProfile(data, profile, config):
     # total profiles (E and B mode)
@@ -93,6 +92,9 @@ def readIntoProfile(stackfile, profile, config, n_jack=0, region=None):
             masks = jackknife_masks(data['lens_index'], region, n_jack=n_jack)
             for i in xrange(n_jack):
                 insertIntoProfile(data[masks[i]], profile[i], config)
+            # for bias correction: add normal profile, no jackknifing
+            insertIntoProfile(data, profile[-1], config)
+            del masks
 
         # clean up
         fits.close()
@@ -103,9 +105,10 @@ def readIntoProfile(stackfile, profile, config, n_jack=0, region=None):
 
 def createProfiles(bins, config, n_jack=0):
     # create empty profiles for each of the jackknife regions
+    # add one extra profile for the normal sample (all pairs without jackknife)
     if n_jack > 1:
         profile = []
-        for i in xrange(n_jack):
+        for i in xrange(n_jack+1):
             profile.append(createProfiles(bins, config))
         return profile
 
@@ -124,7 +127,7 @@ def createProfiles(bins, config, n_jack=0):
 def appendProfile(profile, profile2, config, n_jack=0):
     # for jackknifes: split into regions
     if n_jack > 1:
-        for i in xrange(n_jack):
+        for i in xrange(n_jack+1):
             appendProfile(profile[i], profile2[i], config)
     else:
         profile['E'] += profile2['E']
