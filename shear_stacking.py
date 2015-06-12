@@ -100,8 +100,7 @@ class BinnedScalarProfile:
                 mean_q[i] = self.Q[i].getMean()
                 std_q[i] = self.Q[i].getStd()
         return r, n, mean_q, std_q
-    """
-    def getSummmedProfile(self):
+    def getSummedProfile(self, per_area=True):
         mean_q = np.empty(len(self.bins)-1)
         std_q = np.empty(len(self.bins)-1)
         n = np.empty(len(self.bins)-1)
@@ -110,14 +109,15 @@ class BinnedScalarProfile:
             n[i] = self.Q[i].N
             if n[i] > 0:
                 r[i] = self.R[i] / n[i]
-                mean_q[i] = self.Q[i].WiXi / (np.pi*(self.bins[i+1]**2 - self.bins[i]**2))
-                std_q[i] = ((self.Q[i].Wi*self.Q[i].WiXi2 - self.Q[i].WiXi**2) / (self.Q[i].N - 1) * self.Q[i].N)**0.5
-            else:
-                r[i] = 0
-                mean_q[i] = 0
-                std_q[i] = 0
+                mean_q[i] = self.Q[i].WiXi
+                if self.Q[i].WiSi > 0:
+                    mean_q[i] *= self.Q[i].N/self.Q[i].WiSi
+                # FIXME: need correct errors with and without sensitivity
+                std_q[i] = 0 #((self.Q[i].Wi*self.Q[i].WiXi2 - self.Q[i].WiXi**2) / (self.Q[i].N - 1))**0.5
+                if per_area:
+                    mean_q[i] /= (np.pi*(self.bins[i+1]**2 - self.bins[i]**2))
+                    std_q[i] /=  (np.pi*(self.bins[i+1]**2 - self.bins[i]**2))
         return r, n, mean_q, std_q
-    """
 
 # extrapolation function from
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range

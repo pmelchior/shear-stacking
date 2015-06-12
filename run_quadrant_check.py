@@ -11,7 +11,63 @@ def makeDensityMap(outfile, config, shapes, nside=512):
     ipix = hp.ang2pix(nside, (90-shapes[config['shape_dec_key']])/180*np.pi, shapes[config['shape_ra_key']]/180*np.pi, nest=False)
     bc = np.bincount(ipix, minlength=hp.nside2npix(nside))
     hp.write_map(outfile, bc)
+    return bc
 
+""" for plotting only"""
+def lon2RA(lon):
+    lon = 360 - lon
+    hours = int(lon)/15
+    minutes = int(float(lon - hours*15)/15 * 60)
+    minutes = '{:>02}'.format(minutes)
+    return "%d:%sh" % (hours, minutes)
+
+def getCountLocation(config, shapes, nside=512):
+    ipix = hp.ang2pix(nside, (90-shapes[config['shape_dec_key']])/180*np.pi, shapes[config['shape_ra_key']]/180*np.pi, nest=False)
+    bc = np.bincount(ipix)
+    pixels = np.nonzero(bc)[0]
+    bc = bc[bc>0] / hp.nside2resol(nside, arcmin=True)**2 # in arcmin^-2
+    theta, phi = hp.pix2ang(nside, pixels, nest=False)
+    lat = 90 - theta*180/np.pi
+    lon = phi*180/np.pi
+    return bc, lat, lon
+
+from mpl_toolkits.basemap import Basemap
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+def plotDensityMap(config, shapes, nside=512):
+    # set up figure
+    setTeXPlot(2*nside/512)
+    fig = plt.figure(figsize=(6.5*nside/512,6*nside/512))
+    ax = fig.add_axes([0.07,0.07,0.84,0.9], aspect='equal')
+    # equal-area map straight above the footprint center
+    m = Basemap(projection='aea',width=2000000,height=2200000,
+                lat_0=-52.5, lat_1=-61, lat_2=-42., lon_0=-75.)
+
+    # after cuts
+    vmin,vmax = 0,10
+    bc, lat, lon = getCountLocation(config, shapes, nside=nside)
+    x,y  = m(-lon, lat)
+    sc = m.scatter(x,y,c=bc, linewidths=0, s=10, marker='s', cmap=cm.YlOrRd, vmin=vmin, vmax=vmax, rasterized=True, ax=ax)
+    #sc = m.scatter(x,y,c=bc, linewidths=0, s=8, marker='h', cmap=cm.jet, vmin=vmin, vmax=vmax, rasterized=True)#, norm=matplotlib.colors.LogNorm())
+
+    # draw parallels and meridians.
+    # label on left and bottom of map.
+    parallels = np.arange(-75.,0.,5.)
+    m.drawparallels(parallels,labels=[1,0,0,0], labelstyle="+/-", linewidth=0.5)
+    meridians = np.arange(0.,360.,5.)
+    m.drawmeridians(meridians,labels=[0,0,0,1], fmt=lon2RA, linewidth=0.5)
+
+    # add colorbar
+    cb = m.colorbar(sc,"right", size="3%", pad='0%')
+    cb.set_label('$n_g\ [\mathrm{arcmin}^{-2}]$')
+    cb.solids.set_edgecolor("face")
+    #plt.show()
+    plt.savefig('depth_map_quadrant_check.pdf', transparent=True)
+    plt.savefig('depth_map_quadrant_check.png')
+""" end plotting """
+    
 if __name__ == '__main__':
     # parse inputs
     try:
@@ -76,6 +132,7 @@ if __name__ == '__main__':
         print "created healpix density map %s" % densityfile
         dmap=hu.readDensityMap(densityfile)
         """
+        plotDensityMap(config, shapes, nside=1024)
         
         # define shapes selection that are at higher than cluster
         # redshift, i.e. no high-z cutoff
