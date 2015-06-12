@@ -119,29 +119,31 @@ if __name__ == '__main__':
                 n_gal = shapes_lens.size
 
                 if n_gal:
+
                     # compute tangential and cross shear
                     gt, gx = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens[config['lens_ra_key']], lens[config['lens_dec_key']], computeB=True)
 
-                    data['lens_index'][done:done+n_gal] = m1
-                    data['DeltaSigma'][done:done+n_gal] = gt
-                    data['DeltaSigma_x'][done:done+n_gal] = gx
-                    data['radius_angular'][done:done+n_gal] = d12
-                    data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
-
-                    # compute sensitivity and weights: with the photo-z bins, we use
-                    # DeltaSigma = wz1 < gt> / (wz2 <s>),
-                    # where wz1 and wz2 are the effective weights at given lens z
+                    # compute sensitivity and weights: with the photo-z bins,
+                    # we use DeltaSigma = wz2 * wz1**-1 < gt> / (wz2 <s>),
+                    # where wz1 and wz2 are the effective inverse Sigma_crit
+                    # weights at given lens z
+                    # assumption: <Sigma_crit^-1>^-1 =~ <Sigma_crit>
                     zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
-                    sensitivity = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
                     for b in np.unique(zs_bin):
                         wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
                         wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
                         mask = zs_bin == b
-                        data['weight'][done:done+n_gal][mask] = wz1_
-                        # in the plot_slices script, the sensitivity will be
-                        # multiplied with the weight, so we need to divide wz1 out
-                        data['sensitivity'][done:done+n_gal][mask] = sensitivity[mask] * wz2_ / wz1_
+                        data['DeltaSigma'][done:done+n_gal][mask] = wz1_**-1 * gt
+                        data['DeltaSigma_x'][done:done+n_gal][mask] = wz1_**-1 * gx
+                        data['weight'][done:done+n_gal][mask] = wz2_
                         del mask
+                        
+                    data['lens_index'][done:done+n_gal] = m1
+                    data['sensitivity'][done:done+n_gal] = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
+                    data['radius_angular'][done:done+n_gal] = d12
+                    data['radius_physical'][done:done+n_gal] = Ang2Dist(np.array(d12), lens[config['lens_z_key']])
+
+                    
 
                     # get indices for all sources in each slice
                     i = 0
