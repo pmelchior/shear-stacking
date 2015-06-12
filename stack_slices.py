@@ -133,8 +133,8 @@ if __name__ == '__main__':
                         wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
                         wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
                         mask = zs_bin == b
-                        data['DeltaSigma'][done:done+n_gal][mask] = wz1_**-1 * gt
-                        data['DeltaSigma_x'][done:done+n_gal][mask] = wz1_**-1 * gx
+                        data['DeltaSigma'][done:done+n_gal][mask] = wz1_**-1 * gt[mask]
+                        data['DeltaSigma_x'][done:done+n_gal][mask] = wz1_**-1 * gx[mask]
                         data['weight'][done:done+n_gal][mask] = wz2_
                         del mask
                         
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                         i += 1
 
                     done += n_gal
-                    del shapes_lens, gt, gx, zs_bin, sensitivity
+                    del shapes_lens, gt, gx, zs_bin
 
             # finish up
             os.system('rm ' + matchfile)
