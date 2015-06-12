@@ -11,17 +11,19 @@ def computeMeanStdForProfile(profile, name, s=None, n_jack=0):
     # use build-in method to calculate in-bin means and dispersions
     if n_jack == 0:
         if s is None:
-            return profile[name].getProfile()
+            mean_r, n, mean_q, std_q, sum_w = profile[name].getProfile()
         else:
-            return profile[name][s].getProfile()
+            mean_r, n, mean_q, std_q, sum_w = profile[name][s].getProfile()
+        mask = (n>0)
+        return mean_r[mask], n[mask], mean_q[mask], std_q[mask], sum_w[mask]
     else: # jackknife
         q = []
         missing = []
         for i in xrange(n_jack):
             if s is None:
-                r_, n_, q_, std_q = profile[i][name].getProfile()
+                r_, n_, q_, std_q, sum_w = profile[i][name].getProfile()
             else:
-                r_, n_, q_, std_q = profile[i][name][s].getProfile()
+                r_, n_, q_, std_q, sum_w = profile[i][name][s].getProfile()
             missing.append(n_ == 0)
             q.append(q_)
         missing = np.array(missing)
@@ -30,9 +32,9 @@ def computeMeanStdForProfile(profile, name, s=None, n_jack=0):
 
         # result for normal/non-jackknife profile
         if s is None:
-            mean_r, n, mean0, std_q = profile[-1][name].getProfile()
+            mean_r, n, mean0, std_q, sum_w = profile[-1][name].getProfile()
         else:
-            mean_r, n, mean0, std_q = profile[-1][name][s].getProfile()
+            mean_r, n, mean0, std_q, sum_w = profile[-1][name][s].getProfile()
         mask = (n>0)
 
         # variance and bias-corrected mean needs number of actual jackknifes:
@@ -40,7 +42,7 @@ def computeMeanStdForProfile(profile, name, s=None, n_jack=0):
         n_avail = n_jack - missing.sum(axis=0)
         mean_q = n_avail*mean0 - (n_avail - 1)*mean_q
         std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
-        return mean_r[mask], n[mask], mean_q.data[mask], std_q.data[mask]
+        return mean_r[mask], n[mask], mean_q.data[mask], std_q.data[mask], sum_w[mask]
 
 def insertIntoProfile(data, profile, config):
     # total profiles (E and B mode)
@@ -209,16 +211,16 @@ if __name__ == '__main__':
 
     # save profiles to npz
     filename = outdir + "shear_profile_%s_EB.npz" % coords
-    mean_r, n, mean_e, std_e = computeMeanStdForProfile(profile, 'E', n_jack=n_jack)
-    mean_r, n, mean_b, std_b = computeMeanStdForProfile(profile, 'B', n_jack=n_jack)
-    kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "mean_b": mean_b, "std_b": std_b, "n_jack": n_jack }
+    mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, 'E', n_jack=n_jack)
+    mean_r, n, mean_b, std_b, sum_w = computeMeanStdForProfile(profile, 'B', n_jack=n_jack)
+    kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "mean_b": mean_b, "std_b": std_b, "sum_w": sum_w, "n_jack": n_jack }
     np.savez(filename, **kwargs)
     print "writing " + filename
     
     for key, limit  in config['splittings'].iteritems():
         for s in xrange(len(limit)-1):
-            mean_r, n, mean_e, std_e = computeMeanStdForProfile(profile, key, s=s, n_jack=n_jack)
+            mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, key, s=s, n_jack=n_jack)
             filename = outdir + "shear_profile_%s_%s_%d.npz" % (coords, key, s)
-            kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "n_jack": n_jack }
+            kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "sum_w": sum_w, "n_jack": n_jack }
             np.savez(filename, **kwargs)
             print "writing " + filename

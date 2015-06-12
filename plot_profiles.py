@@ -33,29 +33,25 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
-def makeEBProfile(ax, profile, lw=1):
+def makeEBProfile(ax, profile, plot_type, lw=1):
     colors = getColors(3)
-    ax.errorbar(profile['mean_r'], profile['mean_e'], yerr=profile['std_e'], c='k', marker='.', label='E-mode', lw=lw, zorder=10)
-    try:
+    if plot_type == "shear":
+        ax.errorbar(profile['mean_r'], profile['mean_e'], yerr=profile['std_e'], c='k', marker='.', label='E-mode', lw=lw, zorder=10)
         ax.errorbar(profile['mean_r'], profile['mean_b'], yerr=profile['std_b'], c=colors[1], marker='.', label='B-mode', lw=lw, zorder=9)
-    except KeyError:
-        pass
+    else:
+        ax.errorbar(profile['mean_r'], profile['sum_w'], yerr=None, c='k', marker='.', label='all', lw=lw, zorder=10)
+        print np.dstack((profile['mean_r'], profile['mean_e'], profile['sum_w']))[0]
     
     xlim = ax.get_xlim()
     if coords == "angular":
         ax.plot(xlim, [0,0], 'k:')
         ax.set_xlim(xlim)
     n_pairs = profile['n'].sum()
-    """
-    n_jack = profile['n_jack']
-    if n_jack > 1:
-        n_pairs /= n_jack - 1
-    """
     print n_pairs
     title = r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n_pairs/1e9)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     
-def makeSlicedProfile(ax, key_name, profile, limits, xlim, ylim, lw=1):
+def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1):
     if coords == "angular":
         ax.plot(xlim, [0,0], 'k:')
     if plt.matplotlib.rcParams['text.usetex']:
@@ -75,7 +71,10 @@ def makeSlicedProfile(ax, key_name, profile, limits, xlim, ylim, lw=1):
             label += '%d)$' % limits[s+1]
         else:
             label += '%.2f)$' % limits[s+1]
-        ax.errorbar(profile[s]['mean_r'], profile[s]['mean_e'], c=colors[s], marker='.', label=label, lw=lw)
+        if plot_type == "shear":
+            ax.errorbar(profile[s]['mean_r'], profile[s]['mean_e'], yerr=profile[s]['std_e'], c=colors[s], marker='.', label=label, lw=lw)
+        else:
+            ax.errorbar(profile[s]['mean_r'], profile[s]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
     #ax.set_ylim(ylim)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
@@ -137,21 +136,21 @@ if __name__ == '__main__':
     name = "shear_profile_"
     if plot_type == "boost":
         name = "boost_factor_"
-        
+    
     # E/B
-    profiles['EB'] = np.load(indir + name + '%s_EB.npz' % coords)
+    profiles['EB'] = np.load(indir + 'shear_profile_%s_EB.npz' % coords)
     # splits
     for key, limit  in config['splittings'].iteritems():
         profiles[key] = []
         for s in xrange(len(limit)-1):
-            filename = indir + name + "%s_%s_%d.npz" % (coords, key, s)
+            filename = indir + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
             profiles[key].append(np.load(filename))
 
     # plot generation: E/B profile
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
-    makeEBProfile(ax, profiles['EB'])
+    makeEBProfile(ax, profiles['EB'], plot_type)
     present = profiles['EB']['n'] > 0
     pivot = (profiles['EB']['mean_e'] + profiles['EB']['std_e'])[present].max()
     pivot_ = (profiles['EB']['mean_e'])[present].min()
@@ -173,7 +172,7 @@ if __name__ == '__main__':
         print "  " + key
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, key, profiles[key], config['splittings'][key], xlim, ylim)
+        makeSlicedProfile(ax, key, profiles[key], plot_type, config['splittings'][key], xlim, ylim)
         makeAxisLabels(ax, coords, plot_type)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         plotfile = indir + name + "%s_%s.png" % (coords, key)
