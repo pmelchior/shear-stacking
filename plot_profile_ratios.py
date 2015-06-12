@@ -74,7 +74,7 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1
         else:
             ax.errorbar(profile[s]['mean_r'], profile[s]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    #ax.set_ylim(ylim)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
 
@@ -89,31 +89,45 @@ def makeAxisLabels(ax, coords, plot_type):
     if coords == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
         ax.set_xscale('symlog', linthreshx=1e-2)
-        ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
-        if plot_type == "shear":
-            ax.set_yscale('symlog', linthreshy=1e3)
-        else:
-            ax.set_yscale('log')
-        ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
     else:
         ax.set_xlabel('Radius [arcmin]')
 
-
+def makeProfileRatio(profile1, profile2):
+    p = {}
+    for k, v in profile1.iteritems():
+        if k in ['mean_e', 'sum_w']:
+            try:
+                p[k] = v/extrap(profile1['mean_r'], profile2['mean_r'], profile2[k])
+            except KeyError:
+                pass
+        else:
+            p[k] = v
+    return p
+    
 if __name__ == '__main__':
     # parse inputs
     try:
-        configfile = argv[1]
-        coords = argv[2]
+        configfile1 = argv[1]
+        configfile2 = argv[2]
+        coords = argv[3]
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <angular/physical> [shear/boost]"
+        print "usage: " + argv[0] + " <config file 1> <config file 2> <angular/physical> [shear/boost]"
         raise SystemExit
     try:
-        fp = open(configfile)
-        print "opening configfile " + configfile
-        config = json.load(fp)
+        fp = open(configfile1)
+        print "opening configfile " + configfile1
+        config1 = json.load(fp)
         fp.close()
     except IOError:
-        print "configfile " + configfile + " does not exist!"
+        print "configfile " + configfile1 + " does not exist!"
+        raise SystemExit
+    try:
+        fp = open(configfile2)
+        print "opening configfile " + configfile2
+        config2 = json.load(fp)
+        fp.close()
+    except IOError:
+        print "configfile " + configfile2 + " does not exist!"
         raise SystemExit
     
     if coords not in ['angular', 'physical']:
@@ -121,7 +135,7 @@ if __name__ == '__main__':
         raise SystemExit
 
     try:
-        plot_type = argv[3]
+        plot_type = argv[4]
     except IndexError:
         plot_type = "shear"
 
@@ -129,51 +143,59 @@ if __name__ == '__main__':
         print "specify either shear or boost as plot_type"
         raise SystemExit
     
-    indir = os.path.dirname(configfile) + "/"
-    outdir = indir
+    indir1 = os.path.dirname(configfile1) + "/"
+    indir2 = os.path.dirname(configfile2) + "/"
+    outdir = indir1
 
     # load profiles
-    profiles = {}
-    name = "shear_profile_"
+    profilesr = {}
+    profiles1 = {}
+    profiles2 = {}
+    name = "shear_profile_ratio_"
     if plot_type == "boost":
-        name = "boost_factor_"
+        name = "boost_factor_ratio_"
     
     # E/B
-    profiles['EB'] = np.load(indir + 'shear_profile_%s_EB.npz' % coords)
+    profiles1['EB'] = np.load(indir1 + 'shear_profile_%s_EB.npz' % coords)
+    profiles2['EB'] = np.load(indir2 + 'shear_profile_%s_EB.npz' % coords)
+    profilesr['EB'] = makeProfileRatio(profiles1['EB'], profiles2['EB'])
+        
     # splits
-    for key, limit  in config['splittings'].iteritems():
-        profiles[key] = []
+    for key, limit  in config1['splittings'].iteritems():
+        profiles1[key] = []
+        profiles2[key] = []
+        profilesr[key] = []
         for s in xrange(len(limit)-1):
-            filename = indir + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
-            profiles[key].append(np.load(filename))
+            filename = indir1 + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
+            profiles1[key].append(np.load(filename))
+            filename = indir2 + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
+            profiles2[key].append(np.load(filename))
+            profilesr[key].append(makeProfileRatio(profiles1[key][-1], profiles2[key][-1]))
 
     # plot generation: E/B profile
     setTeXPlot(sampling=2)
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
-    makeEBProfile(ax, profiles['EB'], plot_type)
-    present = profiles['EB']['n'] > 0
-    pivot = (profiles['EB']['mean_e'] + profiles['EB']['std_e'])[present].max()
-    pivot_ = (profiles['EB']['mean_e'])[present].min()
+    makeEBProfile(ax, profilesr['EB'], plot_type)
     if coords == "physical":
-        xlim = (1e-2, profiles['EB']['mean_r'][present].max()*1.5)
-        ylim = (1e3, 1e7)#max(0, pivot_/1.25), pivot*1.5)
+        xlim = (1e-2, profilesr['EB']['mean_r'].max()*1.5)
+        ylim = (1e3, 1e7)
     else:
         xlim = ax.get_xlim()
         ylim = (-0.15*pivot, 1.25*pivot)
     ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    #ax.set_ylim(ylim)
     makeAxisLabels(ax, coords, plot_type)
     fig.subplots_adjust(wspace=0, hspace=0, left=0.17, bottom=0.13, right=0.98, top=0.98)
     plotfile = outdir + name + '%s_EB.png' % coords
     fig.savefig(plotfile)
 
     # sliced profile plots
-    for key in config['splittings'].keys():
+    for key in config1['splittings'].keys():
         print "  " + key
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, key, profiles[key], plot_type, config['splittings'][key], xlim, ylim)
+        makeSlicedProfile(ax, key, profilesr[key], plot_type, config1['splittings'][key], xlim, ylim)
         makeAxisLabels(ax, coords, plot_type)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         plotfile = outdir + name + "%s_%s.png" % (coords, key)

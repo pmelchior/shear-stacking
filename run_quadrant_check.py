@@ -126,14 +126,13 @@ if __name__ == '__main__':
         basename = ".".join(basename.split(".")[:-1])
         densityfile = outdir + basename + '_density.fits'
 
-        """
         # make healpix map of density of all shapes
         makeDensityMap(densityfile, config, shapes, nside=1024)
         print "created healpix density map %s" % densityfile
         dmap=hu.readDensityMap(densityfile)
+        #plotDensityMap(config, shapes, nside=1024)
+
         """
-        plotDensityMap(config, shapes, nside=1024)
-        
         # define shapes selection that are at higher than cluster
         # redshift, i.e. no high-z cutoff
         dmaps = []
@@ -144,6 +143,7 @@ if __name__ == '__main__':
             makeDensityMap(densityfile, config, shapes[mask], nside=1024)
             print "created healpix density map %s" % densityfile
             dmaps.append(hu.readDensityMap(densityfile))
+        """
         
         # open lens catalog for quadrant check
         # we need to remove any lens cuts since we want the check for all
@@ -165,6 +165,7 @@ if __name__ == '__main__':
             
         for i in xrange(lenses.size):
             lens = lenses[i]
+            """
             zl = lens[config['lens_z_key']]
             # use the dmap the is has shapes from bin above the cluster redshift
             # FIXME: we lose all clusters above 0.85, but that's only
@@ -179,6 +180,8 @@ if __name__ == '__main__':
             # get quadrant ellipticty and mask flags
             if dmap_ is not None:
                 data['quad_flags'][i] = dmap_.check_quad(lens[config['lens_ra_key']], lens[config['lens_dec_key']], radius_degrees[i], ellip_max)
+            """
+            data['quad_flags'][i] = dmap.check_quad(lens[config['lens_ra_key']], lens[config['lens_dec_key']], radius_degrees[i], ellip_max)
         
         # save result as table
         if append_to_extra == False:
