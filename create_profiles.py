@@ -1,3 +1,4 @@
+
 #!/bin/env python
 
 import os, errno, json, fitsio, copy
@@ -105,13 +106,13 @@ def readIntoProfile(stackfile, profile, config, n_jack=0, region=None):
         print "  trouble opening! skipping..."
     return profile
 
-def createProfiles(bins, config, n_jack=0):
+def createProfile(bins, config, n_jack=0):
     # create empty profiles for each of the jackknife regions
     # add one extra profile for the normal sample (all pairs without jackknife)
     if n_jack > 1:
         profile = []
         for i in xrange(n_jack+1):
-            profile.append(createProfiles(bins, config))
+            profile.append(createProfile(bins, config))
         return profile
 
     # create profile for E/B mode of all data
@@ -136,7 +137,25 @@ def appendProfile(profile, profile2, config, n_jack=0):
         profile['B'] += profile2['B']
         for key, limit  in config['splittings'].iteritems():
             for s in xrange(len(limit)-1):
-                profile[key][s] += profile2[key][s] 
+                profile[key][s] += profile2[key][s]
+
+# save profiles to npz
+def saveProfile(profile, outdir, name_template='shear_profile_', n_jack=0):
+    filename = outdir + name_template + "EB.npz"
+    mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, 'E', n_jack=n_jack)
+    mean_r, n, mean_b, std_b, sum_w = computeMeanStdForProfile(profile, 'B', n_jack=n_jack)
+    kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "mean_b": mean_b, "std_b": std_b, "sum_w": sum_w, "n_jack": n_jack }
+    np.savez(filename, **kwargs)
+    print "writing " + filename
+    
+    for key, limit  in config['splittings'].iteritems():
+        for s in xrange(len(limit)-1):
+            mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, key, s=s, n_jack=n_jack)
+            filename = outdir + name_template + "%s_%d.npz" % (key, s)
+            kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "sum_w": sum_w, "n_jack": n_jack }
+            np.savez(filename, **kwargs)
+            print "writing " + filename
+
 
 if __name__ == '__main__':
     # parse inputs
@@ -144,7 +163,7 @@ if __name__ == '__main__':
         configfile = argv[1]
         coords = argv[2]
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <angular/physical> [jackknife regions]"
+        print "usage: " + argv[0] + " <config file> <angular/physical> [jackknife regions] [jackknife center file]"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -164,6 +183,11 @@ if __name__ == '__main__':
     else:
         n_jack = 0
 
+    if len(argv) > 4:
+        jack_file = argv[4]
+    else:
+        jack_file = None
+
     indir = os.path.dirname(configfile) + "/"
     outdir = indir
     stackfiles = glob(indir + '/*_DeltaSigma*.fits')
@@ -179,30 +203,47 @@ if __name__ == '__main__':
     # if jacknife errors are desired: create jackknife regions from
     # the lens file by k-means clustering and assign each lens
     # to the nearest k-means center
+    # If reuse_jack is specified: reload previously generated centers
+    # to use fixed regions
     region = None
     if n_jack:
-        print "defining %d jackknife regions" % n_jack
         import kmeans_radec
+        outdir_jack = outdir + "n_jack_%d/" % n_jack
         lenses = getLensCatalog(config, verbose=True)
         radec = np.dstack((lenses[config['lens_ra_key']], lenses[config['lens_dec_key']]))[0]
-        maxiter=100
-        tol=1.0e-5
-        km=kmeans_radec.kmeans_sample(radec, n_jack, maxiter=maxiter, tol=tol)
-        if not km.converged:
-            raise RuntimeError("k means did not converge")
+        if jack_file is None:
+            print "defining %d jackknife regions" % n_jack
+            jack_file = outdir_jack + "km_centers.npy"
+            maxiter = 100
+            tol = 1.0e-5
+            km = kmeans_radec.kmeans_sample(radec, n_jack, maxiter=maxiter, tol=tol)
+            if not km.converged:
+                raise RuntimeError("k means did not converge")
+
+            # save result for later
+            try:
+                os.makedirs(outdir_jack)
+            except OSError:
+                pass
+            np.save(jack_file, km.centers)
+
+        else:
+            print "reusing jackknife regions from " + jack_file
+            centers_ = np.load(jack_file)
+            km = kmeans_radec.KMeans(centers_)
         
         # define regions: ids of lenses assigned to each k-means cluster
         region  = km.find_nearest(radec)
 
     # set up containers
-    profile = createProfiles(bins, config, n_jack=n_jack)
+    profile = createProfile(bins, config, n_jack=n_jack)
     # need a deep copy of the empty structure for each of the threads
     initprofile = copy.deepcopy(profile)
 
     # iterate thru all DeltaSigma files: distribute them over given radial bins
-    n_processes = min(6, cpu_count())
+    n_processes = min(6, cpu_count()/2)
     if n_jack:
-        n_processes = cpu_count()
+        n_processes = cpu_count()/2
     pool = Pool(processes=n_processes)
     results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, n_jack, region)) for stackfile in stackfiles]
     for r in results:
@@ -210,17 +251,15 @@ if __name__ == '__main__':
         appendProfile(profile, profile_, config, n_jack=n_jack)
 
     # save profiles to npz
-    filename = outdir + "shear_profile_%s_EB.npz" % coords
-    mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, 'E', n_jack=n_jack)
-    mean_r, n, mean_b, std_b, sum_w = computeMeanStdForProfile(profile, 'B', n_jack=n_jack)
-    kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "mean_b": mean_b, "std_b": std_b, "sum_w": sum_w, "n_jack": n_jack }
-    np.savez(filename, **kwargs)
-    print "writing " + filename
-    
-    for key, limit  in config['splittings'].iteritems():
-        for s in xrange(len(limit)-1):
-            mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, key, s=s, n_jack=n_jack)
-            filename = outdir + "shear_profile_%s_%s_%d.npz" % (coords, key, s)
-            kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "sum_w": sum_w, "n_jack": n_jack }
-            np.savez(filename, **kwargs)
-            print "writing " + filename
+    name = "shear_profile_%s_" % coords
+    saveProfile(profile, outdir, name_template=name, n_jack=n_jack)
+
+    # if jackknife: store profiles for each region and the km properties
+    if n_jack:
+        try:
+            os.makedirs(outdir_jack)
+        except OSError:
+            pass
+        for i in xrange(n_jack):
+            name = "shear_profile_%s_jack_%d_" % (coords, i)
+            saveProfile(profile[i], outdir_jack, name_template=name, n_jack=0)
