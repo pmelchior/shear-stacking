@@ -175,10 +175,12 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
     chunk_size = config['shape_chunk_size']
     shdu = fitsio.FITS(shapefile)
     extra = None
+    total_sample = 0
     if verbose:
         print "opening shapefile %s (%d entries)" % (shapefile, shdu[1].get_nrows())
 
     if len(config['shape_cuts']) == 0:
+        total_sample = shdu[1].get_nrows()
         if chunk_index is None:
             shapes = shdu[1][:]
         else:
@@ -186,7 +188,7 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
             if verbose:
-                print "opening extra shapefile " + config['shape_file_extra']
+                print "  opening extra shapefile " + config['shape_file_extra']
             if chunk_index is None:
                 extra = ehdu[1][:]
             else:
@@ -203,9 +205,10 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
             mask = ehdu[1].where(cuts)
+            total_sample = mask.size
             if verbose:
-                print "opening extra shapefile " + config['shape_file_extra']
-                print "selecting %d shapes" % mask.size
+                print "  opening extra shapefile " + config['shape_file_extra']
+                print "  selecting %d shapes" % mask.size
             if chunk_index is not None:
                 mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
             shapes = shdu[1][mask]
@@ -213,14 +216,18 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
             ehdu.close()
         except KeyError:
             mask = shdu[1].where(cuts)
+            total_sample = mask.size
             if verbose:
-                print "selecting %d shapes" % mask.size
+                print "  selecting %d shapes" % mask.size
             if chunk_index is not None:
                 mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
             shapes = shdu[1][mask]
         del mask
     if verbose:
-        print "shape sample (this chunk): %d" % shapes.size
+        if chunk_index is not None:
+            print "  shape sample: %d (chunk %d/%d)" % (shapes.size, chunk_index, np.floor(total_sample/chunk_size))
+        else:
+            print "  shape sample: %d" % shapes.size
     shdu.close()
 
     # if there's an extra file: join data with shapes
@@ -240,17 +247,17 @@ def getLensCatalog(config, verbose=False):
         cuts = " && ".join(config['lens_cuts'])
         mask = hdu[1].where(cuts)
         if verbose:
-            print "selecting %d lenses" % mask.size
+            print "  selecting %d lenses" % mask.size
         lenses = hdu[1][mask]
     hdu.close()
     if verbose:
-        print "lens sample: %d" % lenses.size
+        print "  lens sample: %d" % lenses.size
 
     # see if there's an extra file
     try:
         hdu = fitsio.FITS(config['lens_extra_file'])
         if verbose:
-            print "opening extra lensfile %s (%d entries)" % (config['lens_extra_file'], hdu[1].get_nrows())
+            print "  opening extra lensfile %s (%d entries)" % (config['lens_extra_file'], hdu[1].get_nrows())
         if mask is None:
             extra = hdu[1][:]
         else:

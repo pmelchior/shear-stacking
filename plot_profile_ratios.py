@@ -46,6 +46,7 @@ def makeEBProfile(ax, profile, plot_type, lw=1):
         ax.set_xlim(xlim)
     n_pairs = profile['n'].sum()
     print n_pairs
+    np.savetxt('boost_factor_avg.txt',np.dstack((profile['mean_r'], profile['sum_w']))[0], fmt='%.3f', delimiter='\t', header='R\tBoost')
     title = r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n_pairs/1e9)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     
@@ -74,7 +75,7 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1
         else:
             ax.errorbar(profile[s]['mean_r'], profile[s]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
-    #ax.set_ylim(ylim)
+    ax.set_ylim(ylim)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
 
@@ -98,6 +99,7 @@ def makeProfileRatio(profile1, profile2):
         if k in ['mean_e', 'sum_w']:
             try:
                 p[k] = v/extrap(profile1['mean_r'], profile2['mean_r'], profile2[k])
+                p[k] /= p[k][-3:].mean()
             except KeyError:
                 pass
         else:
@@ -179,16 +181,17 @@ if __name__ == '__main__':
     makeEBProfile(ax, profilesr['EB'], plot_type)
     if coords == "physical":
         xlim = (1e-2, profilesr['EB']['mean_r'].max()*1.5)
-        ylim = (1e3, 1e7)
+        ylim = (0.95,1.55)#(1e3, 1e7)
     else:
         xlim = ax.get_xlim()
         ylim = (-0.15*pivot, 1.25*pivot)
     ax.set_xlim(xlim)
-    #ax.set_ylim(ylim)
+    ax.set_ylim(ylim)
     makeAxisLabels(ax, coords, plot_type)
     fig.subplots_adjust(wspace=0, hspace=0, left=0.17, bottom=0.13, right=0.98, top=0.98)
     plotfile = outdir + name + '%s_EB.png' % coords
     fig.savefig(plotfile)
+    np.savez(plotfile.replace(".png", ".npz"), **profilesr['EB']) 
 
     # sliced profile plots
     for key in config1['splittings'].keys():
@@ -200,4 +203,6 @@ if __name__ == '__main__':
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
         plotfile = outdir + name + "%s_%s.png" % (coords, key)
         fig.savefig(plotfile)
+        for s in xrange(len(profilesr[key])):
+            np.savez(plotfile.replace(".png", "_%d.npz" % s), **profilesr[key][s])
 

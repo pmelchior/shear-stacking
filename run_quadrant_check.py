@@ -119,7 +119,7 @@ if __name__ == '__main__':
     shapes = getShapeCatalog(config, verbose=True)
 
     # Troxel's photo-z bin edges
-    zbin_edges = [0.3, 0.57, 0.85, 1.3]
+    zbin_edges = [0.3, 0.55, 0.83, 1.3]
     
     if shapes.size:
         basename = os.path.basename(shapefile)

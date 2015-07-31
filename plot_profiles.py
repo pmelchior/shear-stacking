@@ -74,7 +74,7 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1
         else:
             ax.errorbar(profile[s]['mean_r'], profile[s]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
     ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    #ax.set_ylim(ylim)
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
 
