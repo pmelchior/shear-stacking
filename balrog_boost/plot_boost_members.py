@@ -81,7 +81,7 @@ def makeShearProfile(ax, profile, coords, lw=1):
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     makeAxisLabels(ax, profile['mean_r'], coords, 'shear')
 
-def makeWeightProfile(fig, p_r, p_all, p_wo_ubermem, p_ubermem, p_balrog, coords, lw=1):
+def makeWeightProfile(fig, p_r, p_all, p_wo_ubermem, p_balrog, coords, lw=1):
     # comparison of the sum-of-weights
     ax = fig.add_subplot(311)
     ax.errorbar(p_all['mean_r'], p_all['sum_w'], yerr=None, c='k', marker='.', label=r'$w$', lw=lw, zorder=10)
@@ -91,9 +91,9 @@ def makeWeightProfile(fig, p_r, p_all, p_wo_ubermem, p_ubermem, p_balrog, coords
     legend = ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
     makeAxisLabels(ax, p_r['mean_r'], coords, 'weight', stacked=True)
 
-    # ubermem weights
+    # member weights
     ax = fig.add_subplot(312)
-    ax.errorbar(p_ubermem['mean_r'], p_ubermem['sum_w'], yerr=None, c='r', marker='.', label=r'$w_u$', lw=lw, zorder=10)
+    ax.errorbar(p_wo_ubermem['mean_r'], p_all['sum_w'] - p_wo_ubermem['sum_w'], yerr=None, c='r', marker='.', label=r'$w_u$', lw=lw)
     legend = ax.legend(loc='upper right', numpoints=1, frameon=False, fontsize='small')
     makeAxisLabels(ax, p_r['mean_r'], coords, 'weight', stacked=True)
 
@@ -141,10 +141,8 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     makeAxisLabels(ax, profile[0]['mean_r'], coords, plot_type)
 
 
-def makeBoostedProfile(all, wo_ubermem, ubermem, balrog, common_r=None):
+def makeBoostedProfile(all, wo_ubermem, balrog, common_r=None):
     p = {}
-
-    # ubermem rejection correction factor
     if common_r is None:
         r = wo_ubermem['mean_r']
     else:
@@ -152,7 +150,6 @@ def makeBoostedProfile(all, wo_ubermem, ubermem, balrog, common_r=None):
     if all['mean_r'].size:
         w = extrap(r, all['mean_r'], all['sum_w'])
         w_o = extrap(r, wo_ubermem['mean_r'], wo_ubermem['sum_w'])
-        w_u = extrap(r, ubermem['mean_r'], ubermem['sum_w'])
         w_b = extrap(r, balrog['mean_r'], balrog['sum_w'])
 
         p['sum_w'] = w_b * w_o[-4:-1].mean() / w_b[-4:-1].mean()
@@ -249,13 +246,12 @@ def load_close(filename):
     f.close()
     return d
 
-def loadProfiles(indir1, indir2, indir3, indir4, config, coords, n_jack=0, common_r=None, set_r=False):
+def loadProfiles(indir1, indir2, indir3, config, coords, n_jack=0, common_r=None, set_r=False):
     if n_jack == 0:
         # load profiles
         p_r = {}
         p_all = {}
         p_wo_ubermem = {}
-        p_ubermem = {}
         p_balrog = {}
 
         # E/B
@@ -263,16 +259,13 @@ def loadProfiles(indir1, indir2, indir3, indir4, config, coords, n_jack=0, commo
         p_wo_ubermem['EB'] = load_close(indir2 + 'shear_profile_%s_EB.npz' % coords)
         if set_r:
             common_r = p_wo_ubermem['EB']['mean_r']
-
-        p_ubermem['EB'] = load_close(indir3 + 'shear_profile_%s_EB.npz' % coords)
-        p_balrog['EB'] = load_close(indir4 + 'shear_profile_%s_EB.npz' % coords)
-        p_r['EB'] = makeBoostedProfile(p_all['EB'], p_wo_ubermem['EB'], p_ubermem['EB'], p_balrog['EB'], common_r=common_r)
+        p_balrog['EB'] = load_close(indir3 + 'shear_profile_%s_EB.npz' % coords)
+        p_r['EB'] = makeBoostedProfile(p_all['EB'], p_wo_ubermem['EB'], p_balrog['EB'], common_r=common_r)
 
         # splits
         for key, limit  in config1['splittings'].iteritems():
             p_all[key] = []
             p_wo_ubermem[key] = []
-            p_ubermem[key] = []
             p_balrog[key] = []
             p_r[key] = []
             for s in xrange(len(limit)-1):
@@ -281,45 +274,39 @@ def loadProfiles(indir1, indir2, indir3, indir4, config, coords, n_jack=0, commo
                 filename = indir2 + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
                 p_wo_ubermem[key].append(load_close(filename))
                 filename = indir3 + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
-                p_ubermem[key].append(load_close(filename))
-                filename = indir4 + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
                 p_balrog[key].append(load_close(filename))
-                p_r[key].append(makeBoostedProfile(p_all[key][-1], p_wo_ubermem[key][-1], p_ubermem[key][-1], p_balrog[key][-1], common_r=common_r))
-        return p_r, p_all, p_wo_ubermem, p_ubermem, p_balrog
+                p_r[key].append(makeBoostedProfile(p_all[key][-1], p_wo_ubermem[key][-1], p_balrog[key][-1], common_r=common_r))
+        return p_r, p_all, p_wo_ubermem, p_balrog
     else:
         lp_r = []
         lp_all = []
         lp_wo_ubermem = []
-        lp_ubermem = []
         lp_balrog = []
         subdir = "n_jack_%d/" % n_jack
         
         # load non-jackknife profile for bias correction
-        p_r_, p_all_, p_wo_ubermem_, p_ubermem_, p_balrog_ = loadProfiles(indir1, indir2, indir3, indir4, config, coords, n_jack=0, set_r=True)
+        p_r_, p_all_, p_wo_ubermem_, p_balrog_ = loadProfiles(indir1, indir2, indir3, config, coords, n_jack=0, set_r=True)
         if set_r:
             common_r = p_r_['EB']['mean_r']
         lp_r.append(p_r_)
         lp_all.append(p_all_)
         lp_wo_ubermem.append(p_wo_ubermem_)
-        lp_ubermem.append(p_ubermem_)
         lp_balrog.append(p_balrog_)
 
         for i in xrange(n_jack):
             jack_nr = "_jack_%d" % i
-            p_r_, p_all_, p_wo_ubermem_, p_ubermem_, p_balrog_ = loadProfiles(indir1 + subdir, indir2 + subdir, indir3 + subdir, indir4 + subdir, config, coords + jack_nr, n_jack=0, common_r=common_r)
+            p_r_, p_all_, p_wo_ubermem_, p_balrog_ = loadProfiles(indir1 + subdir, indir2 + subdir, indir3 + subdir, config, coords + jack_nr, n_jack=0, common_r=common_r)
             lp_r.append(p_r_)
             lp_all.append(p_all_)
             lp_wo_ubermem.append(p_wo_ubermem_)
-            lp_ubermem.append(p_ubermem_)
             lp_balrog.append(p_balrog_)
 
         p_r = mergeAllSubProfiles(lp_r, config, n_jack=n_jack)
         p_all = mergeAllSubProfiles(lp_all, config, n_jack=n_jack)
         p_wo_ubermem = mergeAllSubProfiles(lp_wo_ubermem, config, n_jack=n_jack)
-        p_ubermem = mergeAllSubProfiles(lp_ubermem, config, n_jack=n_jack)
         #p_balrog = mergeAllSubProfiles(lp_balrog, config, n_jack=n_jack)
         p_balrog = lp_balrog[0]
-        return p_r, p_all, p_wo_ubermem, p_ubermem, p_balrog
+        return p_r, p_all, p_wo_ubermem, p_balrog
 
     
 if __name__ == '__main__':
@@ -328,10 +315,9 @@ if __name__ == '__main__':
         configfile1 = argv[1]  
         configfile2 = argv[2]
         configfile3 = argv[3]
-        configfile4 = argv[4]
-        coords = argv[5]
+        coords = argv[4]
     except IndexError:
-        print "usage: " + argv[0] + " <default file> <w/o ubermem file> <ubermem file> <balrog file> <angular/physical>"
+        print "usage: " + argv[0] + " <default file> <w/o ubermem file> <balrog file> <angular/physical>"
         raise SystemExit
     try:
         fp = open(configfile1)
@@ -358,15 +344,6 @@ if __name__ == '__main__':
         print "configfile " + configfile3 + " does not exist!"
         raise SystemExit
     
-    try:
-        fp = open(configfile4)
-        print "opening configfile " + configfile4
-        config4 = json.load(fp)
-        fp.close()
-    except IOError:
-        print "configfile " + configfile4 + " does not exist!"
-        raise SystemExit
-    
     if coords not in ['angular', 'physical']:
         print "specify either angular or physical coordinates"
         raise SystemExit
@@ -374,12 +351,11 @@ if __name__ == '__main__':
     indir1 = os.path.dirname(configfile1) + "/"
     indir2 = os.path.dirname(configfile2) + "/"
     indir3 = os.path.dirname(configfile3) + "/"
-    indir4 = os.path.dirname(configfile4) + "/"
     outdir = indir2
 
     # load profiles
     n_jack = 40
-    p_r, p_all, p_wo_ubermem, p_ubermem, p_balrog = loadProfiles(indir1, indir2, indir3, indir4, config1, coords, n_jack=n_jack, set_r=True)
+    p_r, p_all, p_wo_ubermem, p_balrog = loadProfiles(indir1, indir2, indir3, config1, coords, n_jack=n_jack, set_r=True)
 
     
     # plot generation: E/B profile
@@ -399,7 +375,7 @@ if __name__ == '__main__':
 
     # weight / boost profile
     fig = plt.figure(figsize=(5, 7))
-    makeWeightProfile(fig, p_r[key], p_all[key], p_wo_ubermem[key], p_ubermem[key], p_balrog[key], coords)
+    makeWeightProfile(fig, p_r[key], p_all[key], p_wo_ubermem[key], p_balrog[key], coords)
     fig.subplots_adjust(wspace=0, hspace=0.15, left=0.17, bottom=0.09, right=0.98, top=0.98)
     #plotfile = name['boost'] % (coords, key)
     fig.show()
@@ -419,7 +395,7 @@ if __name__ == '__main__':
 
             for s in xrange(len(p_r[key])):
                 fig = plt.figure(figsize=(5, 7))
-                makeWeightProfile(fig, p_r[key][s], p_all[key][s], p_wo_ubermem[key][s], p_ubermem[key][s], p_balrog[key][s], coords)
+                makeWeightProfile(fig, p_r[key][s], p_all[key][s], p_wo_ubermem[key][s], p_balrog[key][s], coords)
                 fig.subplots_adjust(wspace=0, hspace=0.15, left=0.17, bottom=0.09, right=0.98, top=0.98)
                 fig.show()
     
