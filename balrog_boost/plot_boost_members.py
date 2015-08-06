@@ -5,10 +5,10 @@ import os, errno, json, fitsio, copy
 #matplotlib.use('agg')
 import pylab as plt
 import numpy as np
-from sys import argv
+from sys import argv, path
+path.append(os.path.abspath(os.path.join(os.getcwd(), os.pardir)))
 from shear_stacking import *
 from glob import glob
-from multiprocessing import Pool, cpu_count
 from matplotlib.ticker import NullFormatter, FuncFormatter
 
 # colors based on blue/white/red divergent colormap
