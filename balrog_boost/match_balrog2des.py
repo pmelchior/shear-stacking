@@ -25,7 +25,6 @@ def getResampledIndex(data, weights, size=1):
     return idx
 
 def saveWeightFile(filename, data, weights):
-    # simply hijack data['mag_psf'] and overwrite with weights
     newdata = np.empty(data.shape[0], dtype=[('ra', 'f4'), ('dec', 'f4'), ('mag_auto', 'f4'), ('flux_radius', 'f4'), ('match_weight', 'f8')])
     newdata['ra'] = data['ra']
     newdata['dec'] = data['dec']
@@ -65,9 +64,8 @@ del des_mag, des_size, des_ids, des2_ids, idx_
 # separate the 3 photoz-bins
 n_near = 10
 balrog_data_ = np.dstack((balrog_data['mag_auto_' + band], balrog_data['flux_radius_' + band]))[0]
-#balrog_data_ = balrog_data['mag_auto_' + band]
 newcat = np.empty(des_data.shape[0], dtype=[('ra', 'f4'), ('dec', 'f4'), ('photoz_bin', 'i1')])
-"""
+
 done = 0
 for pzb in [0,1,2]:
     mask = (des_pzb == pzb)
@@ -78,22 +76,12 @@ for pzb in [0,1,2]:
     #filename = '/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_i_weights_%d.fits' % pzb
     #saveWeightFile(filename, balrog_data, weights)
 
-    
     # create a matched resmpled balrog catalog with ra,dec,photoz_bin
     newidx = getResampledIndex(balrog_data, weights, size=mask.sum())
     newcat[done:done+newidx.size]['ra'] = balrog_data[newidx]['alphawin_j2000_' + band]
     newcat[done:done+newidx.size]['dec'] = balrog_data[newidx]['deltawin_j2000_' + band]
     newcat[done:done+newidx.size]['photoz_bin'] = pzb
     done += newidx.size
-"""
-
-wn = weighting.weight_match(balrog_data_, des_data, n_near)
-weights = wn.get_weights()
-weights /= weights.sum() # not close enough to one
-newidx = getResampledIndex(balrog_data, weights, size=des_data.shape[0])
-newcat['ra'] = balrog_data[newidx]['alphawin_j2000_' + band]
-newcat['dec'] = balrog_data[newidx]['deltawin_j2000_' + band]
-newcat['photoz_bin'] = 0
     
 newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_i_photoz-bin.fits', 'rw')
 newfits.write(newcat)
