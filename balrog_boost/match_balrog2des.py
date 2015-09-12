@@ -27,6 +27,11 @@ def saveWeightFile(filename, data, weights):
     fits.write(newdata)
     fits.close()
 
+def skyDistance(ra, dec, ra_ref, dec_ref):
+    # CAUTION: this needs to be a pseudo-Cartesian coordinate frame
+    # (not pure RA/DEC), otherwise distances are skewed
+    return (((ra-ra_ref)*cos(dec*pi/180))**2 + (dec-dec_ref)**2)**0.5
+
 band = 'i'
 
 balrog = fitsio.FITS('/n/des/suchyta.1/DataFiles/BalrogDB/cluster-lensing-3/sim-clus-lens-like.fits')
@@ -37,7 +42,7 @@ balrog_version = balrog[1][w]['version']
 balrog_unq_idx = getUniqueIndex(balrog_ids + 100000000 * balrog_version)
 w = w[balrog_unq_idx]
 balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename_' + band][w]
-balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w]))[0]
+balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w], balrog[1]['alphawin_j2000_' + band][w], balrog[1]['deltawin_j2000_' + band][w]))[0]
 del balrog_ids, balrog_version, balrog_unq_idx, w
 
 # get that DES shape catalog
@@ -53,39 +58,57 @@ des2_ids = des2[1]['coadd_objects_id'][:]
 des2_index, idx_ = numpy_util.match(des2_ids, des_ids)
 des_size = des2[1]['flux_radius_' + band][:][des2_index]
 des_tile = des2[1]['tilename'][:][des2_index]
-des_data = np.dstack((des_mag, des_size))[0]
+des_data = np.dstack((des_mag, des_size, des[1][w]['ra'], des[1][w]['dec']))[0]
+tiles = np.unique(des_tile)
+
+# normalize mag/size of data vector to have ~ mean zero and unit variance
+# use global instead of tile means/stds
+des_means = np.median(des_data, axis=0)
+des_stds = np.std(des_data, axis=0)
+des_data[:,0] = (des_data[:,0]-des_means[0])/des_stds[0]
+des_data[:,1] = (des_data[:,1]-des_means[1])/des_stds[1]
+balrog_data[:,0] = (balrog_data[:,0]-des_means[0])/des_stds[0]
+balrog_data[:,1] = (balrog_data[:,1]-des_means[1])/des_stds[1]
 
 # check if matching is complete and unique
 if not (des_ids == des2_ids[des2_index]).all():
     raise RuntimeError("matching all DES objects from secondary table failed!")
 del des_ids, w, des2_ids, des2_index, idx_, des_mag, des_size 
 
-# match 2D distributions according to nearest neighbors
+# match both data sets distributions according to nearest neighbors
 # separate the 3 photoz-bins
-n_near = 40
+n_near = 10
 newcat = np.empty(des_data.shape[0], dtype=[('ra', 'f4'), ('dec', 'f4'), ('photoz_bin', 'i1')])
 done = 0
 
-tiles = np.unique(des_tile)
 for tile in tiles:
     des_tile_mask = (des_tile == tile)
     balrog_tile_mask = (balrog_info['tilename_' + band] == tile)
     print "Tile "+ tile + ", matching ", des_tile_mask.sum() , "vs", balrog_tile_mask.sum()
 
-    
     if des_tile_mask.sum() > balrog_tile_mask.sum():
         print "Balrog data missing"
         raise SystemExit
     
-
     if balrog_tile_mask.sum() > n_near:
         balrog_info_ = balrog_info[balrog_tile_mask]
         balrog_data_ = balrog_data[balrog_tile_mask]
-    
+        des_data_ = des_data[des_tile_mask]
+        des_pzb_ = des_pzb[des_tile_mask]
+
+        # normalize the ra/dec coordinates of data vector
+        # project onto tangent plane
+        # use balrog sample because of higher spatial density
+        ra_mean, dec_mean = np.median(balrog_data_[:,2]), np.median(balrog_data_[:,3])
+        balrog_data_[:,2] = (balrog_data_[:,2] - ra_mean)*np.cos(dec_mean*np.pi/180)
+        balrog_data_[:,3] = (balrog_data_[:,3] - dec_mean)
+        des_data_[:,2] = (des_data_[:,2] - ra_mean)*np.cos(dec_mean*np.pi/180)
+        des_data_[:,3] = (des_data_[:,3] - dec_mean)
+ 
         for pzb in [0,1,2]:
-            des_pzb_mask = (des_pzb[des_tile_mask] == pzb)
+            des_pzb_mask = (des_pzb_ == pzb)
             if des_pzb_mask.sum() > n_near:
-                wn = weighting.weight_match(balrog_data_, des_data[des_tile_mask][des_pzb_mask], n_near)
+                wn = weighting.weight_match(balrog_data_, des_data_[des_pzb_mask], n_near)
                 weights = wn.get_weights()
                 weights /= weights.sum()
 
@@ -99,10 +122,13 @@ for tile in tiles:
                 newcat[done:done+newidx.size]['photoz_bin'] = pzb
                 done += newidx.size
 
+                # remove newidx from balrog_data_ to prevent multiple selection
+                balrog_data_ = np.delete(balrog_data_, newidx, axis=0)
 
-newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_i_photoz-bin.fits', 'rw')
+newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec_40_i_photoz-bin.fits', 'rw')
 newfits.write(newcat[:done])
 newfits.close()
+
 
 
 
