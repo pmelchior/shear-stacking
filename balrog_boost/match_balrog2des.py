@@ -37,10 +37,8 @@ balrog_version = balrog[1][w]['version']
 balrog_unq_idx = getUniqueIndex(balrog_ids + 100000000 * balrog_version)
 w = w[balrog_unq_idx]
 balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename_' + band][w]
-#balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w]))[0]
-balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w], balrog[1]['alphawin_j2000_' + band][w], balrog[1]['deltawin_j2000_' + band][w]))[0]
+balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w]))[0]
 del balrog_ids, balrog_version, balrog_unq_idx, w
-
 
 # get that DES shape catalog
 des = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/des_sv_wl_info.fits')
@@ -55,8 +53,7 @@ des2_ids = des2[1]['coadd_objects_id'][:]
 des2_index, idx_ = numpy_util.match(des2_ids, des_ids)
 des_size = des2[1]['flux_radius_' + band][:][des2_index]
 des_tile = des2[1]['tilename'][:][des2_index]
-des_data = np.dstack((des_mag, des_size, des[1][w]['ra'], des[1][w]['dec']))[0]
-#des_data = np.dstack((des_mag, des_size))[0]
+des_data = np.dstack((des_mag, des_size))[0]
 
 # check if matching is complete and unique
 if not (des_ids == des2_ids[des2_index]).all():
@@ -103,7 +100,7 @@ for tile in tiles:
                 done += newidx.size
 
 
-newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec_i_photoz-bin.fits', 'rw')
+newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_i_photoz-bin.fits', 'rw')
 newfits.write(newcat[:done])
 newfits.close()
 
