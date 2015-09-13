@@ -41,7 +41,7 @@ balrog_version = balrog[1][w]['version']
 # create almost unique superindex and select unique ones
 balrog_unq_idx = getUniqueIndex(balrog_ids + 100000000 * balrog_version)
 w = w[balrog_unq_idx]
-balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename_' + band][w]
+balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename_' + band, 'mag_auto_' + band, 'flux_radius_' + band][w]
 balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w], balrog[1]['alphawin_j2000_' + band][w], balrog[1]['deltawin_j2000_' + band][w]))[0]
 del balrog_ids, balrog_version, balrog_unq_idx, w
 
@@ -78,7 +78,8 @@ del des_ids, w, des2_ids, des2_index, idx_, des_mag, des_size
 # match both data sets distributions according to nearest neighbors
 # separate the 3 photoz-bins
 n_near = 10
-newcat = np.empty(des_data.shape[0], dtype=[('ra', 'f4'), ('dec', 'f4'), ('photoz_bin', 'i1')])
+oversampling = 1
+newcat = np.empty(int(des_data.shape[0]*oversampling), dtype=[('ra', 'f4'), ('dec', 'f4'), ('mag_auto_' + band, 'f4'), ('flux_radius_' + band, 'f4'), ('photoz_bin', 'i1')])
 done = 0
 
 for tile in tiles:
@@ -104,8 +105,19 @@ for tile in tiles:
         balrog_data_[:,3] = (balrog_data_[:,3] - dec_mean)
         des_data_[:,2] = (des_data_[:,2] - ra_mean)*np.cos(dec_mean*np.pi/180)
         des_data_[:,3] = (des_data_[:,3] - dec_mean)
- 
-        for pzb in [0,1,2]:
+        ra_std, dec_std = balrog_data_[:,2].std(), balrog_data_[:,3].std()
+        # give higher weight to mag/size
+        ra_std *= 10.
+        dec_std *= 10.
+        balrog_data_[:,2] /= ra_std
+        balrog_data_[:,3] /= dec_std
+        des_data_[:,2] /= ra_std
+        des_data_[:,3] /= dec_std
+
+        # cycle through photo-z bins at random
+        # because we remove selected Balrog gaalxies from sample,
+        # the last bin would otherwise suffer most from shrinking sampling
+        for pzb in np.random.permutation(3):
             des_pzb_mask = (des_pzb_ == pzb)
             if des_pzb_mask.sum() > n_near:
                 wn = weighting.weight_match(balrog_data_, des_data_[des_pzb_mask], n_near)
@@ -113,21 +125,22 @@ for tile in tiles:
                 weights /= weights.sum()
 
                 # create a matched resampled balrog catalog with ra,dec,photoz_bin
-                newidx = getResampledIndex(balrog_data_, weights, size=des_pzb_mask.sum())
-                if newidx.size != des_pzb_mask.sum():
-                    print des_pzb_mask.sum(), newidx.size
-                    raise SystemExit
+                newidx = getResampledIndex(balrog_data_, weights, size=int(des_pzb_mask.sum()*oversampling))
                 newcat[done:done+newidx.size]['ra'] = balrog_info_[newidx]['alphawin_j2000_' + band]
                 newcat[done:done+newidx.size]['dec'] = balrog_info_[newidx]['deltawin_j2000_' + band]
+                newcat[done:done+newidx.size]['mag_auto_' + band] = balrog_info_[newidx]['mag_auto_' + band]
+                newcat[done:done+newidx.size]['flux_radius_' + band] = balrog_info_[newidx]['flux_radius_' + band]
                 newcat[done:done+newidx.size]['photoz_bin'] = pzb
                 done += newidx.size
 
                 # remove newidx from balrog_data_ to prevent multiple selection
                 balrog_data_ = np.delete(balrog_data_, newidx, axis=0)
+                balrog_info_ = np.delete(balrog_info_, newidx, axis=0)
 
-newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec_40_i_photoz-bin.fits', 'rw')
+newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec10_near10_oversampling1_i_photoz-bin.fits', 'rw')
 newfits.write(newcat[:done])
 newfits.close()
+
 
 
 
