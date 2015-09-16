@@ -352,6 +352,7 @@ if __name__ == '__main__':
     indir2 = os.path.dirname(configfile2) + "/"
     indir3 = os.path.dirname(configfile3) + "/"
     outdir = indir2
+    label = os.path.dirname(configfile2).split("/")[-1]
 
     # load profiles
     n_jack = 40
@@ -359,8 +360,8 @@ if __name__ == '__main__':
 
     
     # plot generation: E/B profile
-    name = {'shear': outdir + 'shear_profile_boosted_' + '%s_%s.png',
-            'boost': outdir + 'boost_factor_corrected_' + '%s_%s.png' }
+    name = {'shear': outdir + 'shear_profile_boosted_' + label + '_%s_%s.png',
+            'boost': outdir + 'boost_factor_corrected_' + label + '_%s_%s.png' }
     setTeXPlot(sampling=2)
 
     """
@@ -372,15 +373,16 @@ if __name__ == '__main__':
     #plotfile = name['shear'] % (coords, key)
     #fig.show()
     #fig.savefig(plotfile)
-
+    """
+    
     # weight / boost profile
+    key = 'EB'
     fig = plt.figure(figsize=(5, 7))
     makeWeightProfile(fig, p_r[key], p_all[key], p_wo_member[key], p_balrog[key], coords)
     fig.subplots_adjust(wspace=0, hspace=0.15, left=0.17, bottom=0.09, right=0.98, top=0.98)
-    #plotfile = name['boost'] % (coords, key)
+    plotfile = name['boost'] % (coords, key)
     fig.show()
-    #fig.savefig(plotfile)
-    """
+    fig.savefig(plotfile)
     
     # sliced profile plots
     for key in config1['splittings'].keys()[-1:]:
@@ -389,17 +391,21 @@ if __name__ == '__main__':
             fig = plt.figure(figsize=(5, 4))
             ax = fig.add_subplot(111)
             makeSlicedProfile(ax, key, p_r[key], plot_type, config1['splittings'][key])
-            fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
+            fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.97)
             plotfile = name[plot_type] % (coords, key)
-            #fig.savefig(plotfile)
+            fig.savefig(plotfile)
 
+            if plot_type == 'boost':
+                fig.show()
+                
+            for s in xrange(len(p_r[key])):
+                np.savez(plotfile.replace(".png", "_%d.npz" % s), **p_r[key][s])
+
+            """
+            # Show weight profiles for each slice
             for s in xrange(len(p_r[key])):
                 fig = plt.figure(figsize=(5, 7))
                 makeWeightProfile(fig, p_r[key][s], p_all[key][s], p_wo_member[key][s], p_balrog[key][s], coords)
                 fig.subplots_adjust(wspace=0, hspace=0.15, left=0.17, bottom=0.09, right=0.98, top=0.98)
                 fig.show()
-    
-            if plot_type == 'boost':
-                fig.show()
-            #for s in xrange(len(p_r[key])):
-            #    np.savez(plotfile.replace(".png", "_%d.npz" % s), **p_r[key][s])
+            """

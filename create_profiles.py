@@ -241,9 +241,7 @@ if __name__ == '__main__':
     initprofile = copy.deepcopy(profile)
 
     # iterate thru all DeltaSigma files: distribute them over given radial bins
-    n_processes = min(6, cpu_count()/2)
-    if n_jack:
-        n_processes = cpu_count()/2
+    n_processes = 6
     pool = Pool(processes=n_processes)
     results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, n_jack, region)) for stackfile in stackfiles]
     for r in results:

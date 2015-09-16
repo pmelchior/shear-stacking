@@ -137,7 +137,7 @@ for tile in tiles:
                 balrog_data_ = np.delete(balrog_data_, newidx, axis=0)
                 balrog_info_ = np.delete(balrog_info_, newidx, axis=0)
 
-newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec10_near10_oversampling1_i_photoz-bin.fits', 'rw')
+newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec10_near10_i_photoz-bin.fits', 'rw')
 newfits.write(newcat[:done])
 newfits.close()
 
