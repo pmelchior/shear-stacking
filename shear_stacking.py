@@ -102,6 +102,10 @@ class BinnedScalarProfile:
                 std_q[i] = self.Q[i].getStd()
                 sum_w[i] = self.Q[i].Wi / (np.pi*(self.bins[i+1]**2 - self.bins[i]**2))
         return r, n, mean_q, std_q, sum_w
+    def save(self, filename):
+        mean_r, n, mean_q, std_q, sum_w = self.getProfile()
+        kwargs = { "mean_r": mean_r, "n": n, "q": mean_q, "std_q": std_q, "sum_w": sum_w }
+        np.savez(filename, **kwargs)
 
 # extrapolation function from
 # http://stackoverflow.com/questions/2745329/how-to-make-scipy-interpolate-give-an-extrapolated-result-beyond-the-input-range
