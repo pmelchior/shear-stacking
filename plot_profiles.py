@@ -1,14 +1,12 @@
 #!/bin/env python
 
-import os, errno, json, fitsio, copy
+import os, errno, json
 import matplotlib
 matplotlib.use('agg')
 import pylab as plt
 import numpy as np
 from sys import argv
-from shear_stacking import *
-from glob import glob
-from multiprocessing import Pool, cpu_count
+from shear_stacking import setTeXPlot
 
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
@@ -32,34 +30,21 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
-def makeEBProfile(ax, profile, plot_type, lw=1):
-    colors = getColors(3)
-    if plot_type == "shear":
-        ax.errorbar(profile['mean_r'], profile['mean_e'], yerr=profile['std_e'], c='k', marker='.', label='E-mode', lw=lw, zorder=10)
-        ax.errorbar(profile['mean_r'], profile['mean_b'], yerr=profile['std_b'], c=colors[1], marker='.', label='B-mode', lw=lw, zorder=9)
-    else:
-        ax.errorbar(profile['mean_r'], profile['sum_w'], yerr=None, c='k', marker='.', label='all', lw=lw, zorder=10)
-    
-    xlim = ax.get_xlim()
-    if coords == "angular":
-        ax.plot(xlim, [0,0], 'k:')
-        ax.set_xlim(xlim)
-    n_pairs = profile['n'].sum()
-    print n_pairs
-    title = r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n_pairs/1e9)
-    legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
-    
-def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1):
-    if coords == "angular":
+def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
+    if config['coords'] == "angular":
         ax.plot(xlim, [0,0], 'k:')
     if plt.matplotlib.rcParams['text.usetex']:
         title = r'\texttt{' + key_name.replace("_", "\_") + '}'
     else:
         title = key_name
 
+    # make the profile for all
+    ax.errorbar(profile['all']['mean_r'], profile['all']['mean_q'], yerr=profile['all']['std_q'], c='k', marker='.', label='all', lw=lw)
+
     # make the profile for each split
     colors = getColors(len(limits))
     for s in range(len(limits)-1):
+        pname = key_name + "_%d" % s
         label = '$\in ['
         if isinstance(limits[s], (int, long)):
             label += '%d, ' % limits[s]
@@ -69,32 +54,43 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, xlim, ylim, lw=1
             label += '%d)$' % limits[s+1]
         else:
             label += '%.2f)$' % limits[s+1]
-        if plot_type == "shear":
-            ax.errorbar(profile[s]['mean_r'], profile[s]['mean_e'], yerr=profile[s]['std_e'], c=colors[s], marker='.', label=label, lw=lw)
+        if plot_type == "shear" or plot_type == "scalar":
+            ax.errorbar(profile[pname]['mean_r'], profile[pname]['mean_q'], yerr=profile[pname]['std_q'], c=colors[s], marker='.', label=label, lw=lw)
         else:
-            ax.errorbar(profile[s]['mean_r'], profile[s]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
-    ax.set_xlim(xlim)
-    #ax.set_ylim(ylim)
+            ax.errorbar(profile[pname]['mean_r'], profile[pname]['sum_w'], yerr=None, c=colors[s], marker='.', label=label, lw=lw)
+
+    # xlimits
+    xmin = profile['all']['mean_r'].min() / 2
+    xmax = profile['all']['mean_r'].max() * 2
+    ax.set_xlim(xmin, xmax)
+    
+    # decorations
+    n_pair = profile['all']['n'].sum()
+    ax.text(0.05, 0.95, r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n_pair/1e9), ha='left', va='top', transform=ax.transAxes, fontsize='small')
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
 
-def makeAxisLabels(ax, coords, plot_type):
+def makeAxisLabels(ax, plot_type, config):
     if plot_type == "shear":
         ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
-    else:
-        # FIXME: make sure bins are given in Mpc
-        # even when physical: they are currently in Mpc/h
-        # otherwise they are in arcmin
+    if plot_type == "boost":
         ax.set_ylabel(r'$\sum_\mathrm{pairs}{\langle\Sigma_\mathrm{crit}^{-2}\rangle}_w$')
-    if coords == "physical":
+    if plot_type == "scalar":
+        if plt.matplotlib.rcParams['text.usetex']:
+            ax.set_ylabel(r'\texttt{' + config['shape_scalar_key'].replace("_", "\_") + '}')
+        else:
+            ax.set_ylabel(config['shape_scalar_key'])
+        
+    if config['coords'] == "physical":
         ax.set_xlabel('Radius [Mpc/$h$]')
         ax.set_xscale('symlog', linthreshx=1e-2)
         ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
         if plot_type == "shear":
             ax.set_yscale('symlog', linthreshy=1e3)
-        else:
+            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
+        if plot_type == "boost":
             ax.set_yscale('log')
-        ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
+            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
     else:
         ax.set_xlabel('Radius [arcmin]')
 
@@ -103,9 +99,9 @@ if __name__ == '__main__':
     # parse inputs
     try:
         configfile = argv[1]
-        coords = argv[2]
+        plot_type = argv[2]
     except IndexError:
-        print "usage: " + argv[0] + " <config file> <angular/physical> [shear/boost]"
+        print "usage: " + argv[0] + " <config file> <shear/boost/scalar>"
         raise SystemExit
     try:
         fp = open(configfile)
@@ -116,66 +112,39 @@ if __name__ == '__main__':
         print "configfile " + configfile + " does not exist!"
         raise SystemExit
     
-    if coords not in ['angular', 'physical']:
-        print "specify either angular or physical coordinates"
-        raise SystemExit
-
-    try:
-        plot_type = argv[3]
-    except IndexError:
-        plot_type = "shear"
-
-    if plot_type not in ['shear', 'boost']:
-        print "specify either shear or boost as plot_type"
+    if plot_type not in ['shear', 'boost', 'scalar']:
+        print "specify plot_type from ['shear', 'boost', 'scalar']"
         raise SystemExit
     
     indir = os.path.dirname(configfile) + "/"
     outdir = indir
 
     # load profiles
-    profiles = {}
     name = "shear_profile_"
     if plot_type == "boost":
         name = "boost_factor_"
-    
-    # E/B
-    profiles['EB'] = np.load(indir + 'shear_profile_%s_EB.npz' % coords)
-    # splits
-    for key, limit  in config['splittings'].iteritems():
-        profiles[key] = []
+    if plot_type == "scalar":
+        name = "scalar_" + config['shape_scalar_key'] + "_"  
+
+    pnames = ['all']
+    for key, limit in config['splittings'].iteritems():
         for s in xrange(len(limit)-1):
-            filename = indir + 'shear_profile_%s_%s_%d.npz' % (coords, key, s)
-            profiles[key].append(np.load(filename))
-
-    # plot generation: E/B profile
+            pnames.append("%s_%d" % (key, s))
+    profiles = {}
+    for pname in pnames:
+        profiles[pname] = np.load(outdir + name + pname + ".npz")
+        
+    # plot generation
     setTeXPlot(sampling=2)
-    fig = plt.figure(figsize=(5, 4))
-    ax = fig.add_subplot(111)
-    makeEBProfile(ax, profiles['EB'], plot_type)
-    present = profiles['EB']['n'] > 0
-    pivot = (profiles['EB']['mean_e'] + profiles['EB']['std_e'])[present].max()
-    pivot_ = (profiles['EB']['mean_e'])[present].min()
-    if coords == "physical":
-        xlim = (1e-2, profiles['EB']['mean_r'][present].max()*1.5)
-        ylim = (1e3, 1e7)#max(0, pivot_/1.25), pivot*1.5)
-    else:
-        xlim = ax.get_xlim()
-        ylim = (-0.15*pivot, 1.25*pivot)
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    makeAxisLabels(ax, coords, plot_type)
-    fig.subplots_adjust(wspace=0, hspace=0, left=0.17, bottom=0.13, right=0.98, top=0.98)
-    plotfile = outdir + name + '%s_EB.png' % coords
-    fig.savefig(plotfile)
-
-    # sliced profile plots
+    
+    # new plot for each slice
     for key in config['splittings'].keys():
         print "  " + key
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, key, profiles[key], plot_type, config['splittings'][key], xlim, ylim)
-        makeAxisLabels(ax, coords, plot_type)
-        fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.13, right=0.98, top=0.97)
-        plotfile = outdir + name + "%s_%s.png" % (coords, key)
+        makeSlicedProfile(ax, key, profiles, plot_type, config['splittings'][key])
+        makeAxisLabels(ax, plot_type, config)
+        fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.95)
+        plotfile = outdir + name + "%s.png" % key
         fig.savefig(plotfile)
 

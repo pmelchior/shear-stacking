@@ -168,7 +168,11 @@ def getJackknifeRegions(config, lenses, outdir):
     # to use fixed regions
     if config['n_jack']:
         import kmeans_radec
-        jack_file = outdir + "km_centers.npy"
+        try:
+            os.makedirs(outdir + "n_jack")
+        except OSError: # if directory already exists
+            pass
+        jack_file = outdir + "n_jack/km_centers.npy"
         radec = np.dstack((lenses[config['lens_ra_key']], lenses[config['lens_dec_key']]))[0]
         if not os.path.exists(jack_file):
             print "defining %d jackknife regions" % n_jack
@@ -262,8 +266,10 @@ if __name__ == '__main__':
     
         # open shape catalog
         shapefile = config['shape_file']
-        shapes_all = getShapeCatalog(config, verbose=True, chunk_index=None)
-
+        config['shape_chunk_size'] = 2e5
+        shapes_all = getShapeCatalog(config, verbose=True, chunk_index=0)
+        config['shape_chunk_size'] = 50000
+        
         # open lens catalog
         lenses = getLensCatalog(config, verbose=True)
 
@@ -288,6 +294,14 @@ if __name__ == '__main__':
                 appendToProfile(profile, profile_)
                 print "  job %d/%d done" % (i, splits)
                 i+=1
+
+            # save jackknife region results
+            if config['n_jack']:
+                print "saving jackknife profiles..."
+                for pname in profile.keys():
+                    for i in xrange(len(profile[pname])):
+                        filename = outdir + 'n_jack/scalar_' + config['shape_scalar_key'] + '_' + pname + '_%d.npz' % i
+                        profile[pname][i].save(filename)
 
             # collapse jackknifes into means and stds
             print "aggregating results..."
