@@ -158,22 +158,54 @@ def getWZ(power=1):
     return data
 
 
-# join to names arrays of with different columns but same number of rows
-# if column names are identical, those of data1 will prevail
-# FIXME: does not work if data2 has non-trivial dtypes (e.g. multi-dim array)
-def joinDataSets(data1, data2):
-    from numpy.lib import recfunctions
-    columns = data1.dtype.names    
-    columns_ = []
-    dtypes_ = []
-    for i in xrange(len(data2.dtype.names)):
-        col = data2.dtype.names[i]
-        if col not in columns:
-            columns_.append(col)
-            dtypes_.append(data2.dtype[col])
-    return recfunctions.rec_append_fields(data1, columns_, [data2[c] for c in columns_], dtypes=dtypes_)
+class JoinedDataSet:
+    """Helper class to combine two data sets (= np.recarrays) with same 
+    length but different columns.
 
-def getShapeCatalog(config, verbose=False, chunk_index=None):
+    Because of an explicit merge, access or slices in rows are much slower
+    than access to columns. You have been warned!
+    """
+    def __init__(self, data, extra):
+        self.data = data
+        self.extra = extra
+        if len(data) != len(extra):
+            raise RuntimeError("data sets not of equal length!")
+        self._set_dtype()
+    def _set_dtype(self):
+        from numpy.lib import recfunctions
+        self.dtype = np.dtype(recfunctions.zip_descr([self.data, self.extra], flatten=True))
+    def __len__(self):
+        return len(self.data)
+    @property
+    def size(self):
+        return self.data.size + self.extra.size
+    @property
+    def shape(self):
+        return self.data.shape
+    def __getitem__(self, pos):
+        # for string i.e. column request, check which data set has the col
+        if isinstance(pos, basestring):
+            if pos in self.data.dtype.names:
+                return self.data[pos]
+            if pos in self.extra.dtype.names:
+                return self.extra[pos]
+            raise KeyError("%s not in either data set" % pos)
+
+        # for an index/slice: combine both data sets and return
+        else:
+            if isinstance(pos, (int, long)):
+                # rec_append doesn't work with single indices
+                # thus creating a slice here
+                pos = slice(pos, pos+1, None)
+            from numpy.lib import recfunctions
+            columns = self.data.dtype.names    
+            columns_ = []
+            for col in self.extra.dtype.names:
+                if col not in columns:
+                    columns_.append(col)
+            return recfunctions.rec_append_fields(self.data[pos], columns_, [self.extra[pos][c] for c in columns_], dtypes=self.dtype)
+
+def getShapeCatalog(config, verbose=False):
     # open shapes file(s)
     shapefile = config['shape_file']
     chunk_size = config['shape_chunk_size']
@@ -185,18 +217,12 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
 
     if len(config['shape_cuts']) == 0:
         total_sample = shdu[1].get_nrows()
-        if chunk_index is None:
-            shapes = shdu[1][:]
-        else:
-            shapes = shdu[1][chunk_index*chunk_size : (chunk_index+1)*chunk_size]
+        shapes = shdu[1][:]
         try:
             ehdu = fitsio.FITS(config['shape_file_extra'])
             if verbose:
                 print "  opening extra shapefile " + config['shape_file_extra']
-            if chunk_index is None:
-                extra = ehdu[1][:]
-            else:
-                extra = ehdu[1][chunkindex*chunk_size : (chunkindex+1)*chunk_size]
+            extra = ehdu[1][:]
             ehdu.close()
         except KeyError:
             pass
@@ -213,8 +239,6 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
             if verbose:
                 print "  opening extra shapefile " + config['shape_file_extra']
                 print "  selecting %d shapes" % mask.size
-            if chunk_index is not None:
-                mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
             shapes = shdu[1][mask]
             extra = ehdu[1][mask]
             ehdu.close()
@@ -223,21 +247,18 @@ def getShapeCatalog(config, verbose=False, chunk_index=None):
             total_sample = mask.size
             if verbose:
                 print "  selecting %d shapes" % mask.size
-            if chunk_index is not None:
-                mask = mask[chunk_index*chunk_size : (chunk_index+1)*chunk_size]
             shapes = shdu[1][mask]
         del mask
     if verbose:
-        if chunk_index is not None:
-            print "  shape sample: %d (chunk %d/%d)" % (shapes.size, chunk_index, np.floor(total_sample/chunk_size))
-        else:
-            print "  shape sample: %d" % shapes.size
+        print "  shape sample: %d" % shapes.size
     shdu.close()
 
     # if there's an extra file: join data with shapes
     if extra is not None:
-        shapes = joinDataSets(shapes, extra)
-    return shapes
+        shapes_ = JoinedDataSet(shapes, extra)
+        return shapes_
+    else:
+        return shapes
 
 def getLensCatalog(config, verbose=False):
     lensfile = config['lens_file']
@@ -267,7 +288,8 @@ def getLensCatalog(config, verbose=False):
         else:
             extra = hdu[1][mask]
         hdu.close()
-        lenses = joinDataSets(lenses, extra)
+        lenses_ = JoinedDataSet(lenses, extra)
+        return lenses_
     except (KeyError, IOError) as exc: # not in config or file doesn't exist
         pass
     

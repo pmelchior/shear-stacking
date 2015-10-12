@@ -128,7 +128,7 @@ def stackShapes(shapes, lenses, profile_type, config, regions):
     h.match(lenses[config['lens_ra_key']], lenses[config['lens_dec_key']], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
     htmf = HTMFile(matchfile)
     Nmatch = htmf.n_matches
-
+    
     # profile container
     profile = createProfile(config)
 
@@ -304,7 +304,7 @@ if __name__ == '__main__':
     
         # open shape catalog
         shapefile = config['shape_file']
-        shapes_all = getShapeCatalog(config, verbose=True, chunk_index=None)
+        shapes_all = getShapeCatalog(config, verbose=True)
         
         # open lens catalog
         lenses = getLensCatalog(config, verbose=True)
