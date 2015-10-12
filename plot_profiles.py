@@ -8,6 +8,31 @@ import numpy as np
 from sys import argv
 from shear_stacking import setTeXPlot
 
+# use actual LaTeX to render plot and fonts
+from pylab import rcParams
+def setTeXPlot(sampling=1):
+    params = {
+        'backend': 'ps',
+        'ps.distiller.res': 6000,
+        'axes.labelsize': sampling*9,
+        'axes.linewidth' : sampling*0.25,
+        'font.size': sampling*8,
+        'text.fontsize': sampling*8,
+        'legend.fontsize': sampling*8,
+        'legend.markerscale' : sampling*0.5,
+        'xtick.labelsize': sampling*8,
+        'ytick.labelsize': sampling*8,
+        'font.family': 'serif',
+        'font.serif': 'Times',
+        'font.weight': 'medium',
+        'text.usetex': 'times',
+        'figure.subplot.right' : 0.995,
+        'figure.subplot.top' : 0.97,
+        'figure.subplot.left' : 0.125,
+        'figure.subplot.bottom' : 0.07,
+    }
+    rcParams.update(params)
+
 # colors based on blue/white/red divergent colormap
 # from Kevin Moreland:
 # http://www.sandia.gov/~kmorel/documents/ColorMaps/
@@ -63,6 +88,11 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     xmin = profile['all']['mean_r'].min() / 2
     xmax = profile['all']['mean_r'].max() * 2
     ax.set_xlim(xmin, xmax)
+
+    # avoid negative values in shear plots
+    if plot_type == "shear":
+        ymin, ymax = (1e3, 1e7)
+        ax.set_ylim(ymin, ymax)
     
     # decorations
     n_pair = profile['all']['n'].sum()
@@ -120,9 +150,9 @@ if __name__ == '__main__':
     outdir = indir
 
     # load profiles
-    name = "shear_profile_"
+    name = "shear_"
     if plot_type == "boost":
-        name = "boost_factor_"
+        name = "boost_"
     if plot_type == "scalar":
         name = "scalar_" + config['shape_scalar_key'] + "_"  
 

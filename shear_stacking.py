@@ -325,28 +325,3 @@ class HTMFile:
             yield self.m1_current, m2s, d12s
     def __del__(self):
         self.fp.close()
-
-# use actual LaTeX to render plot and fonts
-from pylab import rcParams
-def setTeXPlot(sampling=1):
-    params = {
-        'backend': 'ps',
-        'ps.distiller.res': 6000,
-        'axes.labelsize': sampling*9,
-        'axes.linewidth' : sampling*0.25,
-        'font.size': sampling*8,
-        'text.fontsize': sampling*8,
-        'legend.fontsize': sampling*8,
-        'legend.markerscale' : sampling*0.5,
-        'xtick.labelsize': sampling*8,
-        'ytick.labelsize': sampling*8,
-        'font.family': 'serif',
-        'font.serif': 'Times',
-        'font.weight': 'medium',
-        'text.usetex': 'times',
-        'figure.subplot.right' : 0.995,
-        'figure.subplot.top' : 0.97,
-        'figure.subplot.left' : 0.125,
-        'figure.subplot.bottom' : 0.07,
-    }
-    rcParams.update(params)

@@ -1,219 +1,213 @@
-
 #!/bin/env python
 
-import os, errno, json, fitsio, copy
-import numpy as np
-from sys import argv
+import fitsio, numpy as np, json
+import esutil as eu
 from shear_stacking import *
+from sys import argv
+from multiprocessing import Pool, current_process, cpu_count
 from glob import glob
-from multiprocessing import Pool, cpu_count
+import pylab as plt
 
-def computeMeanStdForProfile(profile, name, s=None, n_jack=0):
-    # use build-in method to calculate in-bin means and dispersions
-    if n_jack == 0:
-        if s is None:
-            mean_r, n, mean_q, std_q, sum_w = profile[name].getProfile()
-        else:
-            mean_r, n, mean_q, std_q, sum_w = profile[name][s].getProfile()
-        mask = (n>0)
-        return mean_r[mask], n[mask], mean_q[mask], std_q[mask], sum_w[mask]
-    else: # jackknife
-        q = []
-        missing = []
-        for i in xrange(n_jack):
-            if s is None:
-                r_, n_, q_, std_q, sum_w = profile[i][name].getProfile()
-            else:
-                r_, n_, q_, std_q, sum_w = profile[i][name][s].getProfile()
-            missing.append(n_ == 0)
-            q.append(q_)
-        missing = np.array(missing)
-        q = np.ma.masked_array(q, mask=missing)
-        mean_q = q.mean(axis=0)
 
-        # result for normal/non-jackknife profile
-        if s is None:
-            mean_r, n, mean0, std_q, sum_w = profile[-1][name].getProfile()
-        else:
-            mean_r, n, mean0, std_q, sum_w = profile[-1][name][s].getProfile()
-        mask = (n>0)
-
-        # variance and bias-corrected mean needs number of actual jackknifes:
-        # to be corrected for available data in each radial bin
-        n_avail = n_jack - missing.sum(axis=0)
-        mean_q = n_avail*mean0 - (n_avail - 1)*mean_q
-        std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
-        return mean_r[mask], n[mask], mean_q.data[mask], std_q.data[mask], sum_w[mask]
-
-def insertIntoProfile(data, profile, config):
-    # total profiles (E and B mode)
-    profile['E'].insert(data['radius_' + config['coords']], data['DeltaSigma'], data['weight'], data['sensitivity'])
-    profile['B'].insert(data['radius_' + config['coords']], data['DeltaSigma_x'], data['weight'], data['sensitivity'])
-    # get index list of matching objects from each splitting
-    i = 0
-    for key, limit in config['splittings'].iteritems():
-        for s in xrange(len(limit)-1):
-            mask = (data['slices'][:,i] == s)
-            profile[key][s].insert(data['radius_' + config['coords']][mask], data['DeltaSigma'][mask], data['weight'][mask], data['sensitivity'][mask])
-            del mask
-        i += 1
-
-def jackknife_masks(ids, region, n_jack):
-    # jackknife region for each cluster
-    rids = np.zeros(ids.size, dtype='uint8')
-    start = 0
-    stop = 0
-    current_id = ids[0]
-    for i in xrange(1, ids.size):
-        stop = i
-        if ids[i] != current_id:
-            rids[start:stop] = region[current_id]
-            current_id = ids[i]
-            start = i
-    # last segment cannot complete
-    rids[start:] = region[current_id]
-
-    # allow everything but region i
-    masks = []
-    for i in xrange(n_jack):
-        masks.append(rids != i)
-    return masks
-
-def readIntoProfile(stackfile, profile, config, n_jack=0, region=None):
-    print "opening file " + stackfile
-    try:
-        fits = fitsio.FITS(stackfile)
-        data = fits[1].read()
-
-        if config['coords'] == "angular":
-            data['radius_angular'] *= 60
-
-        if n_jack < 2:
-            insertIntoProfile(data, profile, config)
-        else:
-            # select only data from lenses in given region
-            masks = jackknife_masks(data['lens_index'], region, n_jack=n_jack)
-            for i in xrange(n_jack):
-                insertIntoProfile(data[masks[i]], profile[i], config)
-            # for bias correction: add normal profile, no jackknifing
-            insertIntoProfile(data, profile[-1], config)
-            del masks
-
-        # clean up
-        fits.close()
-        del data
-    except:
-        print "  trouble opening! skipping..."
-    return profile
-
-def createProfile(bins, config, n_jack=0):
-    # create empty profiles for each of the jackknife regions
-    # add one extra profile for the normal sample (all pairs without jackknife)
-    if n_jack > 1:
-        profile = []
-        for i in xrange(n_jack+1):
-            profile.append(createProfile(bins, config))
-        return profile
-
-    # create profile for E/B mode of all data
-    # and for each slice defined
-    profile = {'E': BinnedScalarProfile(bins),
-               'B': BinnedScalarProfile(bins)
-           }
-    for key, limit in config['splittings'].iteritems():
-        profile[key] = []
-        for s in xrange(len(limit)-1):
-            profile[key].append(BinnedScalarProfile(bins))
-    return profile
-
-# simple helper function: for each key in profile structure, append profile2
-def appendProfile(profile, profile2, config, n_jack=0):
-    # for jackknifes: split into regions
-    if n_jack > 1:
-        for i in xrange(n_jack+1):
-            appendProfile(profile[i], profile2[i], config)
+def getValues(s, key, functions):
+    # what values are used for the slices: functions are direct columns?
+    if key in functions.keys():
+        return eval(functions[key])
     else:
-        profile['E'] += profile2['E']
-        profile['B'] += profile2['B']
-        for key, limit  in config['splittings'].iteritems():
-            for s in xrange(len(limit)-1):
-                profile[key][s] += profile2[key][s]
+        return s[key]
 
-# save profiles to npz
-def saveProfile(profile, outdir, name_template='shear_profile_', n_jack=0):
-    filename = outdir + name_template + "EB.npz"
-    mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, 'E', n_jack=n_jack)
-    mean_r, n, mean_b, std_b, sum_w = computeMeanStdForProfile(profile, 'B', n_jack=n_jack)
-    kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "mean_b": mean_b, "std_b": std_b, "sum_w": sum_w, "n_jack": n_jack }
-    np.savez(filename, **kwargs)
-    print "writing " + filename
-    
-    for key, limit  in config['splittings'].iteritems():
-        for s in xrange(len(limit)-1):
-            mean_r, n, mean_e, std_e, sum_w = computeMeanStdForProfile(profile, key, s=s, n_jack=n_jack)
-            filename = outdir + name_template + "%s_%d.npz" % (key, s)
-            kwargs = {"mean_r": mean_r, "n": n, "mean_e": mean_e, "std_e": std_e, "sum_w": sum_w, "n_jack": n_jack }
-            np.savez(filename, **kwargs)
-            print "writing " + filename
-
-
-if __name__ == '__main__':
-    # parse inputs
-    try:
-        configfile = argv[1]
-        coords = argv[2]
-    except IndexError:
-        print "usage: " + argv[0] + " <config file> <angular/physical> [jackknife regions] [jackknife center file]"
-        raise SystemExit
-    try:
-        fp = open(configfile)
-        print "opening configfile " + configfile
-        config = json.load(fp)
-        fp.close()
-    except IOError:
-        print "configfile " + configfile + " does not exist!"
-        raise SystemExit
-    
-    if coords not in ['angular', 'physical']:
-        print "specify either angular or physical coordinates"
-        raise SystemExit
-
-    if len(argv) > 3:
-        n_jack = int(argv[3])
+def getSliceMask(values, lower, upper, return_num=False):
+    if return_num is False:
+        return (values >= lower) & (values < upper)
     else:
-        n_jack = 0
+        return sum((values >= lower) & (values < upper))
 
-    if len(argv) > 4:
-        jack_file = argv[4]
-    else:
-        jack_file = None
+def getQuadrantMask(lens, shapes, config):
+    quad_flags = lens['quad_flags']
+    # no quadrant pairs OK
+    if quad_flags <= 1:
+        return np.array([], dtype='bool')
+    # all OK
+    if quad_flags == (2**0 + 2**1 + 2**2 + 2**3 + 2**4):
+        return np.ones(shapes.size, dtype='bool')
 
-    indir = os.path.dirname(configfile) + "/"
-    outdir = indir
-    stackfiles = glob(indir + '/*_DeltaSigma*.fits')
-    if len(stackfiles) == 0:
-        print "run stack_slices.py before!"
-        raise SystemExit
+    # not all quadrant pairs are OK
+    # FIXME: needs to be defined from angles on the curved sky
+    # NOTE: very restrictive due to strict ordering of quadrants
+    # e.g. if all sources are in the top half, but quad_flags & 2 > 0,
+    # then no source will be selected even if quad_flags & 8 > 0
+    if quad_flags & 2 > 0:
+        return shapes[config['shape_dec_key']] > lens[config['lens_dec_key']]
+    if quad_flags & 4 > 0:
+        return shapes[config['shape_ra_key']] < lens[config['lens_ra_key']]
+    if quad_flags & 8 > 0:
+        return shapes[config['shape_dec_key']] < lens[config['lens_dec_key']]
+    if quad_flags & 16 > 0:
+        return shapes[config['shape_ra_key']] > lens[config['lens_ra_key']]
 
-    if coords == "physical":
-        bins =  np.exp(0.3883*np.arange(-10, 12))
+def createProfile(config):
+    n_jack = config['n_jack']
+    if config['coords'] == "physical":
+        bins =  np.exp(0.3883*np.arange(-10, 10))
     else:
         bins = np.arange(1,11,1)
+    
+    # create profile for all data and for each slice defined
+    pnames = ['all']
+    for key, limit in config['splittings'].iteritems():
+        for s in xrange(len(limit)-1):
+            pnames.append("%s_%d" % (key, s))
 
+    profile = {}
+    # each slice get a binned profile for all data and each jackknife region
+    for pname in pnames:
+        profile[pname] = [BinnedScalarProfile(bins) for i in xrange(n_jack + 1)]
+    return profile
+
+# BinnedScalarProfile has a += operator, so we just have to call this for
+# each slices/jackknifed profile
+def appendToProfile(profile, profile_):
+    for pname in profile.keys():
+        for i in xrange(len(profile[pname])):
+            profile[pname][i] += profile_[pname][i]
+
+def insertIntoProfile(profile, pname, R, Q, W, S, region=-1, mask=None):
+    if mask is None:
+        for i in xrange(len(profile[pname])):
+            if i != region:
+                profile[pname][i].insert(R, Q, W, S=S)
+    else:
+        for i in xrange(len(profile[pname])):
+            if i != region:
+                if S is not None:
+                    profile[pname][i].insert(R[mask], Q[mask], W[mask], S=S[mask])
+                else:
+                    profile[pname][i].insert(R[mask], Q[mask], W[mask], S=S)
+
+def getShearValues(shapes_lens, lens, config):
+    global wz1, wz2
+    
+    # compute tangential shear
+    gt = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens[config['lens_ra_key']], lens[config['lens_dec_key']], computeB=False)
+    W = np.zeros(gt.size) # better safe than sorry
+
+    # compute sensitivity and weights: with the photo-z bins,
+    # we use DeltaSigma = wz2 * wz1**-1 < gt> / (wz2 <s>),
+    # where wz1 and wz2 are the effective inverse Sigma_crit
+    # weights at given lens z
+    # assumption: <Sigma_crit^-1>^-1 =~ <Sigma_crit>
+    zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
+    for b in np.unique(zs_bin):
+        wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
+        wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
+        mask = zs_bin == b
+        gt[mask] *= wz1_**-1
+        W[mask] = wz2_
+    S = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
+    return gt, W, S
+
+def stackShapes(shapes, lenses, profile_type, config, regions):
+    chunk_size = config['shape_chunk_size']
+    shapefile = config['shape_file']
+    thread_id = current_process()._identity
+    basename = os.path.basename(shapefile)
+    basename = ".".join(basename.split(".")[:-1])
+    matchfile = '/tmp/' + basename + '_matches_%d.bin' % thread_id
+
+    # do we have the column for the quadrant check?
+    do_quadrant_check = 'quad_flags' in lenses.dtype.names
+
+    # find all galaxies in shape catalog within maxrange arcmin 
+    # of each lens center
+    maxrange = float(config['maxrange'])
+    if config['coords'] == "physical":
+        maxrange = Dist2Ang(maxrange, lenses[config['lens_z_key']])
+
+    h = eu.htm.HTM(8)
+    matchfile = matchfile.encode('ascii') # htm.match expects ascii filenames
+    h.match(lenses[config['lens_ra_key']], lenses[config['lens_dec_key']], shapes[config['shape_ra_key']], shapes[config['shape_dec_key']], maxrange, maxmatch=-1, file=matchfile)
+    htmf = HTMFile(matchfile)
+    Nmatch = htmf.n_matches
+
+    # profile container
+    profile = createProfile(config)
+
+    if Nmatch:
+        # iterate over all lenses, write scalar value, r, weight into file
+        for m1, m2, d12 in htmf.matches():
+            lens = lenses[m1]
+            region = regions[m1]
+            shapes_lens = shapes[m2]
+            
+            # check which sources around a lens we can use
+            if do_quadrant_check:
+                mask = getQuadrantMask(lens, shapes_lens, config)
+                shapes_lens = shapes_lens[mask]
+                d12 = np.array(d12)[mask]
+                del mask
+            n_gal = shapes_lens.size
+
+            if n_gal:
+
+                # define the profile quantities: radius, q, weight, sensitivity
+                if config['coords'] == "physical":
+                    R = Ang2Dist(d12, lens[config['lens_z_key']])
+                else:
+                    R = np.array(d12)
+                
+                if profile_type == "scalar":
+                    Q = getValues(shapes_lens, config['shape_scalar_key'], config['functions'])
+                    W = getValues(shapes_lens, config['shape_weight_key'], config['functions'])
+                    S = None
+                if profile_type == "shear":
+                    Q, W, S = getShearValues(shapes_lens, lens, config)
+
+                # save unsliced profile first
+                insertIntoProfile(profile, 'all', R, Q, W, S, region=region)
+                    
+                # find out in which slice each pair falls
+                for key, limit in config['splittings'].iteritems():
+                    if config['split_type'] == 'shape':
+                        values = getValues(shapes_lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            pname = "%s_%d" % (key, s)
+                            mask = getSliceMask(values, limit[s], limit[s+1])
+                            insertIntoProfile(profile, pname, R, Q, W, S, region=region, mask=mask)
+                            del mask
+                        del values
+                        
+                    elif config['split_type'] == 'lens':
+                        value = getValues(lens, key, config['functions'])
+                        for s in xrange(len(limit)-1):
+                            pname = "%s_%d" % (key, s)
+                            # each lens can only be in one slice per key
+                            if getSliceMask(value, limit[s], limit[s+1]):
+                                mask = None
+                                insertIntoProfile(profile, pname, R, Q, W, S, region=region, mask=mask)
+                                break
+                            
+                del shapes_lens, R, Q, W, S
+
+    # finish up
+    os.system('rm ' + matchfile)
+    return profile
+
+def getJackknifeRegions(config, lenses, outdir):
     # if jacknife errors are desired: create jackknife regions from
     # the lens file by k-means clustering and assign each lens
     # to the nearest k-means center
     # If reuse_jack is specified: reload previously generated centers
     # to use fixed regions
-    region = None
-    if n_jack:
+    if config['n_jack']:
         import kmeans_radec
-        outdir_jack = outdir + "n_jack_%d/" % n_jack
-        lenses = getLensCatalog(config, verbose=True)
+        try:
+            os.makedirs(outdir + "n_jack")
+        except OSError: # if directory already exists
+            pass
+        jack_file = outdir + "n_jack/km_centers.npy"
         radec = np.dstack((lenses[config['lens_ra_key']], lenses[config['lens_dec_key']]))[0]
-        if jack_file is None:
+        if not os.path.exists(jack_file):
             print "defining %d jackknife regions" % n_jack
-            jack_file = outdir_jack + "km_centers.npy"
             maxiter = 100
             tol = 1.0e-5
             km = kmeans_radec.kmeans_sample(radec, n_jack, maxiter=maxiter, tol=tol)
@@ -233,31 +227,146 @@ if __name__ == '__main__':
             km = kmeans_radec.KMeans(centers_)
         
         # define regions: ids of lenses assigned to each k-means cluster
-        region  = km.find_nearest(radec)
+        regions  = km.find_nearest(radec)
+    else:
+        # do not use regions: -1 will never be selected for jackknifes
+        regions = -1 * np.ones(len(lenses), dtype='int8')
+    return regions
 
-    # set up containers
-    profile = createProfile(bins, config, n_jack=n_jack)
-    # need a deep copy of the empty structure for each of the threads
-    initprofile = copy.deepcopy(profile)
-
-    # iterate thru all DeltaSigma files: distribute them over given radial bins
-    n_processes = 6
-    pool = Pool(processes=n_processes)
-    results = [pool.apply_async(readIntoProfile, (stackfile, initprofile, config, n_jack, region)) for stackfile in stackfiles]
-    for r in results:
-        profile_ = r.get()
-        appendProfile(profile, profile_, config, n_jack=n_jack)
-
-    # save profiles to npz
-    name = "shear_profile_%s_" % coords
-    saveProfile(profile, outdir, name_template=name, n_jack=n_jack)
-
-    # if jackknife: store profiles for each region and the km properties
-    if n_jack:
-        try:
-            os.makedirs(outdir_jack)
-        except OSError:
-            pass
+def computeMeanStdForProfile(profile):
+    n_jack = len(profile)-1
+    # use build-in method to calculate in-bin means and dispersions
+    if n_jack == 0:
+        mean_r, n, mean_q, std_q, sum_w = profile.getProfile()
+        mask = (n>0)
+        return {"mean_r": mean_r[mask], "n": n[mask], "mean_q": mean_q[mask], "std_q": std_q[mask], "sum_w": sum_w[mask]}
+    
+    else: # jackknife
+        q = []
+        missing = []
         for i in xrange(n_jack):
-            name = "shear_profile_%s_jack_%d_" % (coords, i)
-            saveProfile(profile[i], outdir_jack, name_template=name, n_jack=0)
+            r_, n_, q_, std_q, sum_w = profile[i].getProfile()
+            missing.append(n_ == 0)
+            q.append(q_)
+        missing = np.array(missing)
+        q = np.ma.masked_array(q, mask=missing)
+        mean_q = q.mean(axis=0)
+
+        # result for normal/non-jackknife profile
+        mean_r, n, mean0, std_q, sum_w = profile[-1].getProfile()
+        mask = (n>0)
+
+        # variance and bias-corrected mean needs number of actual jackknifes:
+        # to be corrected for available data in each radial bin
+        n_avail = n_jack - missing.sum(axis=0)
+        mean_q = n_avail*mean0 - (n_avail - 1)*mean_q
+        std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
+
+    return {"mean_r": mean_r[mask], "n": n[mask], "mean_q": mean_q.data[mask], "std_q": std_q.data[mask], "sum_w": sum_w[mask]}
+                
+def collapseJackknifes(profile):
+    for pname in profile.keys():
+        profile[pname] = computeMeanStdForProfile(profile[pname])
+
+
+if __name__ == '__main__':
+    # parse inputs
+    try:
+        configfile = argv[1]
+        profile_type = argv[2]
+    except IndexError:
+        print "usage: " + argv[0] + " <config file> <shear/scalar>"
+        raise SystemExit
+    try:
+        fp = open(configfile)
+        print "opening configfile " + configfile
+        config = json.load(fp)
+        fp.close()
+    except IOError:
+        print "configfile " + configfile + " does not exist!"
+        raise SystemExit
+
+    if profile_type not in ['shear', 'scalar']:
+        print "specify profile_type from ['shear', 'scalar']"
+        raise SystemExit    
+    
+    if config['coords'] not in ['angular', 'physical']:
+        print "config: specify either 'angular' or 'physical' coordinates"
+        raise SystemExit
+
+
+    outdir = os.path.dirname(configfile) + "/"
+    if profile_type == "shear":
+        name = "shear_"
+    if profile_type == "scalar":
+        name = "scalar_" + config['shape_scalar_key'] + "_"  
+    profile_files = outdir + name + '*.npz'
+
+    # only do something if there are no profiles present
+    if len(glob(profile_files)) == 0:
+    
+        # open shape catalog
+        shapefile = config['shape_file']
+        shapes_all = getShapeCatalog(config, verbose=True, chunk_index=None)
+        
+        # open lens catalog
+        lenses = getLensCatalog(config, verbose=True)
+
+        if shapes_all.size and lenses.size:
+
+            # container to hold profiles
+            profile = createProfile(config)
+
+            # get the jackknife regions (if specified in config)
+            regions = getJackknifeRegions(config, lenses, outdir)
+
+            # load lensing weights (w * Sigma_crit ^-1 or -2) for shear profiles
+            if profile_type == "shear":
+                wz1 = getWZ(power=1)
+                wz2 = getWZ(power=2)
+            
+            # cut into manageable junks and distribute over cpus
+            print "running lens-source stacking ..."
+            n_processes = cpu_count()
+            pool = Pool(processes=n_processes)
+            chunk_size = config['shape_chunk_size']
+            splits = shapes_all.size/chunk_size
+            results = [pool.apply_async(stackShapes, (shapes, lenses, profile_type, config, regions)) for shapes in np.array_split(shapes_all, splits)]
+            i = 0
+            for r in results:
+                profile_ = r.get()
+                appendToProfile(profile, profile_)
+                print "  job %d/%d done" % (i, splits)
+                i+=1
+
+            # save jackknife region results
+            if config['n_jack']:
+                print "saving jackknife profiles..."
+                for pname in profile.keys():
+                    for i in xrange(len(profile[pname])):
+                        filename = outdir + 'n_jack/' + name + pname + '_%d.npz' % i
+                        profile[pname][i].save(filename)
+
+            # collapse jackknifes into means and stds
+            print "aggregating results..."
+            collapseJackknifes(profile)
+            
+            # save profiles
+            for pname in profile.keys():
+                filename = outdir + name + pname + '.npz'
+                print "writing " + filename
+                np.savez(filename, **(profile[pname]))
+
+    else:
+        print "Profiles " + profile_files + " already exist."
+        
+        
+
+                
+                
+
+
+
+
+
+

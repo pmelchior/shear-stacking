@@ -8,30 +8,40 @@ Usage
 
 ```
 python run_quadrant_check.py test/config.json
-python stack_slices.py test/config.json
-python create_profiles.py test/config.json physical [40]
-python plot_profiles.py test/config.json physical
+python create_profiles.py test/config.json shear
+python plot_profiles.py test/config.json shear
 ```
 
 This is a typical session. The first command performs the quadrant check, which ensures that each lens in the respective catalog has at least 2 adjacent quadrants of sources within the `maxrange` of the stacks to ensure cancellation of additive shear systematics. This step is optional but recommended. It create another fits file, and you will need to add it as `lens_extra_file` to the config file.
 
-The second command opens the config file, creates FITS tables for each of the shape catalogs listed in the config file, and stores them in the directory `test/`.
+The second command does the heavy lifting. It opens shape and lens catalogs (including any extra files for either), splits the shape catalog into several chunks of `shape_chunk_size` elements, and distributes the chunks over the available CPUs with pythons `multiprocessing`. Each chunk of sources is then matched against all lenses, and the pairs are put into radial profiles. If additional `splitting` are defined, a profile will be created for each slice.
 
-The third command uses the output of the second and generates stacked shear profiles (in either `angular` or `physical` units) for all sources and for each of the splittings specified in the config file, and stores all of them as `.npz` files in the directory `test/`. Note that the script may choose to display different coordinates than those that were used to determine the maximum distance between lens and source during the stacking step, which is set in the config file. At short distances, this normally does not matter, but at large distances using different coordinates for plotting and stacking will lead to suboptimal results. As optional last parameter you can give the number of spatial jackknife regions for the error estimate. If not provided, in-bin dispersion is computed, which does not take cosmic variance into account. After this step, all `*.fits` files in `test/` can be deleted, or the script can be rerun with modified binning.
+If `n_jack > 0`, then the script will internally run spatial jackknife for the lenses. It will make use a jackknife region file, which is placed in `n_jack/km_centers.npy`, which maps each lens index to a spatial region. The profiles for each region (i.e. those whose lens are _not_ in that region), will also be stored in the `n_jack` subdirectory.
 
-The forth command simply takes the `.npz` files and creates the desired plots.
+At the end, the script creates a number of profile files in pythons `npz` format, which contain the following keys/files:
+
+* `mean_r`: density-weighted center of radial bins, units are [Mpc / h] if `coords=='physical'` and [arcmin] if `coords=='angular'`
+* `n`: number of pairs
+* `mean_q`: Mean of the stacked quantity, see below. Units are [10^14 M_solar / Mpc^2] or the natural units of `shape_scalar_key`.
+* `std_q`: In-bin standard deviation or Jackknifed error of `mean_q`
+* `sum_w`: the total weight of all pairs, in units of Sigma_crit^-2 or of `shape_weight_key`
+
+The script can run with two different types of profile: `shear` or `scalar`. In the former case, it will compute the tangential shear from the columns `shape_e1_key`, `shape_e2_key`, `shape_z_key`, `shape_weight_key`, `shape_sensitivity_key`. In the latter case, it create a radial profile of the scalar quantity denotes by `shape_scalar_key` and its weight `shape_weight_key` (no sensitivity is considered).
+
+The third command simply takes the `.npz` files and creates the desired plots.
 
 Configuration file format
 -------------------------
 
 Virtually all aspects of the script can be controlled from a config file, in json format. This way, the scripts do not have to be altered to adjust to the pecularities of the lens or shape catalogs.
 
-One example is given below:
+An example for a shear profile is given below:
 
 ```json
 {
         "coords": "angular",
         "maxrange": 1.1,
+	"n_jack": 40,
         "lens_catalog": "/catalogs/redmapper/redmapper_catalog.fit",
         "lens_cuts": [],
         "lens_z_key": "Z_LAMBDA",
@@ -78,6 +88,7 @@ User-defined `functions` can be used for any `_key` entry in the config file, bo
 Dependencies
 ------------
 
+* [multiprocessing](https://docs.python.org/2/library/multiprocessing.html)
 * [GalSim](https://github.com/GalSim-developers/GalSim)
 * [Erin Sheldon's esutil](https://code.google.com/p/esutil/)
 * [Erin Sheldon's fitsio](https://github.com/esheldon/fitsio)
