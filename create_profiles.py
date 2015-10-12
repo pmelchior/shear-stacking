@@ -199,11 +199,8 @@ def getJackknifeRegions(config, lenses, outdir):
     # If reuse_jack is specified: reload previously generated centers
     # to use fixed regions
     if config['n_jack']:
+        n_jack = config['n_jack']
         import kmeans_radec
-        try:
-            os.makedirs(outdir + "n_jack")
-        except OSError: # if directory already exists
-            pass
         jack_file = outdir + "n_jack/km_centers.npy"
         radec = np.dstack((lenses[config['lens_ra_key']], lenses[config['lens_dec_key']]))[0]
         if not os.path.exists(jack_file):
@@ -216,7 +213,7 @@ def getJackknifeRegions(config, lenses, outdir):
 
             # save result for later
             try:
-                os.makedirs(outdir_jack)
+                os.makedirs(outdir + "n_jack")
             except OSError:
                 pass
             np.save(jack_file, km.centers)
