@@ -6,7 +6,6 @@ matplotlib.use('agg')
 import pylab as plt
 import numpy as np
 from sys import argv
-from shear_stacking import setTeXPlot
 
 # use actual LaTeX to render plot and fonts
 from pylab import rcParams
