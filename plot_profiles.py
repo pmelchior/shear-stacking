@@ -149,11 +149,13 @@ if __name__ == '__main__':
     outdir = indir
 
     # load profiles
-    name = "shear_"
+    file_name = "shear_"
+    plot_name = file_name
     if plot_type == "boost":
-        name = "boost_"
+        plot_name = "boost_"
     if plot_type == "scalar":
-        name = "scalar_" + config['shape_scalar_key'] + "_"  
+        file_name = "scalar_" + config['shape_scalar_key'] + "_"
+        plot_name = file_name
 
     pnames = ['all']
     for key, limit in config['splittings'].iteritems():
@@ -161,7 +163,7 @@ if __name__ == '__main__':
             pnames.append("%s_%d" % (key, s))
     profiles = {}
     for pname in pnames:
-        profiles[pname] = np.load(outdir + name + pname + ".npz")
+        profiles[pname] = np.load(outdir + file_name + pname + ".npz")
         
     # plot generation
     setTeXPlot(sampling=2)
@@ -174,6 +176,6 @@ if __name__ == '__main__':
         makeSlicedProfile(ax, key, profiles, plot_type, config['splittings'][key])
         makeAxisLabels(ax, plot_type, config)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.95)
-        plotfile = outdir + name + "%s.png" % key
+        plotfile = outdir + plot_name + "%s.png" % key
         fig.savefig(plotfile)
 

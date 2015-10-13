@@ -172,8 +172,7 @@ class JoinedDataSet:
             raise RuntimeError("data sets not of equal length!")
         self._set_dtype()
     def _set_dtype(self):
-        from numpy.lib import recfunctions
-        self.dtype = np.dtype(recfunctions.zip_descr([self.data, self.extra], flatten=True))
+        self.dtype = self.__getitem__(0).dtype
     def __len__(self):
         return len(self.data)
     @property
@@ -200,10 +199,12 @@ class JoinedDataSet:
             from numpy.lib import recfunctions
             columns = self.data.dtype.names    
             columns_ = []
+            dtypes_ = []
             for col in self.extra.dtype.names:
                 if col not in columns:
                     columns_.append(col)
-            return recfunctions.rec_append_fields(self.data[pos], columns_, [self.extra[pos][c] for c in columns_], dtypes=self.dtype)
+                    dtypes_.append(self.extra.dtype[col])
+            return recfunctions.rec_append_fields(self.data[pos], columns_, [self.extra[pos][c] for c in columns_], dtypes=dtypes_)
 
 def getShapeCatalog(config, verbose=False):
     # open shapes file(s)

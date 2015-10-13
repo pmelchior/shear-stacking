@@ -327,8 +327,10 @@ if __name__ == '__main__':
             n_processes = cpu_count()
             pool = Pool(processes=n_processes)
             chunk_size = config['shape_chunk_size']
-            splits = shapes_all.size/chunk_size
-            results = [pool.apply_async(stackShapes, (shapes, lenses, profile_type, config, regions)) for shapes in np.array_split(shapes_all, splits)]
+            splits = len(shapes_all)/chunk_size
+            if len(shapes_all) % chunk_size != 0:
+                splits += 1
+            results = [pool.apply_async(stackShapes, (shapes_all[i*chunk_size: (i+1)*chunk_size], lenses, profile_type, config, regions)) for i in xrange(splits)]
             i = 0
             for r in results:
                 profile_ = r.get()
