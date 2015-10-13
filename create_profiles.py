@@ -47,10 +47,18 @@ def getQuadrantMask(lens, shapes, config):
 
 def createProfile(config):
     n_jack = config['n_jack']
-    if config['coords'] == "physical":
-        bins =  np.exp(0.3883*np.arange(-10, 10))
+    l = config['minrange']
+    u = config['maxrange']
+    n_bins = config['n_bins']
+    bin_type = config['bin_type']
+
+    if bin_type == "linear":
+        bins = np.linspace(l, u, n_bins+1)
+    elif bin_type == "log":
+        dlogx = (np.log(u) - np.log(l))/n_bins
+        bins = np.exp(np.log(l) + dlogx * np.arange(n_bins+1))
     else:
-        bins = np.arange(1,11,1)
+        raise NotImplementedError("bin_type %s not in ['linear', 'log']" % bin_type)
     
     # create profile for all data and for each slice defined
     pnames = ['all']
@@ -89,13 +97,28 @@ def getShearValues(shapes_lens, lens, config):
     
     # compute tangential shear
     gt = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens[config['lens_ra_key']], lens[config['lens_dec_key']], computeB=False)
-    W = np.zeros(gt.size) # better safe than sorry
 
-    # compute sensitivity and weights: with the photo-z bins,
+    """
+    # compute DeltaSigma from source redshift
     # we use DeltaSigma = wz2 * wz1**-1 < gt> / (wz2 <s>),
     # where wz1 and wz2 are the effective inverse Sigma_crit
     # weights at given lens z
-    # assumption: <Sigma_crit^-1>^-1 =~ <Sigma_crit>
+    W = getValues(shapes_lens, config['shape_weight_key'], config['functions'])
+    z_l = getValues(lens, config['lens_z_key'], config['functions'])
+    z_s = getValues(shapes_lens, config['shape_z_key'], config['functions'])
+    Sigma_crit = getSigmaCrit(z_l, z_s)
+    mask = z_s > z_l
+    gt[mask] *= Sigma_crit[mask]**-1
+    W[mask] *= Sigma_crit[mask]**-2
+    W[mask == False] = 0
+    """
+    # compute sensitivity and weights: with the photo-z bins,
+    # the precomputed wz1 and wz2 already contain the measurement weights,
+    # we just need to apply the effective Sigma_crit powers to gt and
+    # replace W with wz2 (dropping the measurement weight which would otherwise
+    # be counted twice).
+    # assumption: <Sigma_crit^-1>^-1 =~ <Sigma_crit> 
+    W = np.zeros(gt.size) # better safe than sorry
     zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
     for b in np.unique(zs_bin):
         wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
@@ -303,7 +326,6 @@ if __name__ == '__main__':
     if len(glob(profile_files)) == 0:
     
         # open shape catalog
-        shapefile = config['shape_file']
         shapes_all = getShapeCatalog(config, verbose=True)
         if shapes_all.size == 0:
             print "Shape catalog empty"
@@ -364,10 +386,10 @@ if __name__ == '__main__':
         # print all profile to stdout
         p = profile['all']
         print "\nALL profile:"
-        print "{0:>8s} | {1:>12s} | {2:>12s} | {3:>8s} +- {4:>8s}".format("RADIUS", "NUMBER", "SUM(W)/AREA", "MEAN", "STD")
-        print "-" * 62
+        print "{0:>8s} | {1:>12s} | {2:>12s} | {3:>12s} +- {4:>12s}".format("RADIUS", "NUMBER", "SUM(W)/AREA", "MEAN", "STD")
+        print "-" * 70
         for i in xrange(len(p['n'])):
-            print "{0:8.2f} | {1:12g} | {2:12g} | {3:8g} +- {4:8g}".format(p['mean_r'][i], p['n'][i], p['sum_w'][i], p['mean_q'][i], p['std_q'][i])
+            print "{0:8.2f} | {1:12g} | {2:12g} | {3:12g} +- {4:12g}".format(p['mean_r'][i], p['n'][i], p['sum_w'][i], p['mean_q'][i], p['std_q'][i])
 
     else:
         print "Profiles " + profile_files + " already exist."
