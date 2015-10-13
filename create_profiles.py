@@ -305,56 +305,61 @@ if __name__ == '__main__':
         # open shape catalog
         shapefile = config['shape_file']
         shapes_all = getShapeCatalog(config, verbose=True)
+        if shape_all.size == 0:
+            print "Shape catalog empty"
+            raise SystemExit
         
         # open lens catalog
         lenses = getLensCatalog(config, verbose=True)
+        if lenses.size == 0:
+            print "Lens catalog empty"
+            raise SystemExit
 
-        if shapes_all.size and lenses.size:
+        # container to hold profiles
+        profile = createProfile(config)
 
-            # container to hold profiles
-            profile = createProfile(config)
+        # get the jackknife regions (if specified in config)
+        regions = getJackknifeRegions(config, lenses, outdir)
 
-            # get the jackknife regions (if specified in config)
-            regions = getJackknifeRegions(config, lenses, outdir)
+        # load lensing weights (w * Sigma_crit ^-1 or -2) for shear profiles
+        if profile_type == "shear":
+            wz1 = getWZ(power=1)
+            wz2 = getWZ(power=2)
 
-            # load lensing weights (w * Sigma_crit ^-1 or -2) for shear profiles
-            if profile_type == "shear":
-                wz1 = getWZ(power=1)
-                wz2 = getWZ(power=2)
-            
-            # cut into manageable junks and distribute over cpus
-            print "running lens-source stacking ..."
-            n_processes = cpu_count()
-            pool = Pool(processes=n_processes)
-            chunk_size = config['shape_chunk_size']
-            splits = len(shapes_all)/chunk_size
-            if len(shapes_all) % chunk_size != 0:
-                splits += 1
-            results = [pool.apply_async(stackShapes, (shapes_all[i*chunk_size: (i+1)*chunk_size], lenses, profile_type, config, regions)) for i in xrange(splits)]
-            i = 0
-            for r in results:
-                profile_ = r.get()
-                appendToProfile(profile, profile_)
-                print "  job %d/%d done" % (i, splits)
-                i+=1
+        # cut into manageable junks and distribute over cpus
+        print "running lens-source stacking ..."
+        n_processes = cpu_count()
+        pool = Pool(processes=n_processes)
+        chunk_size = config['shape_chunk_size']
+        splits = len(shapes_all)/chunk_size
+        if len(shapes_all) % chunk_size != 0:
+            splits += 1
+        results = [pool.apply_async(stackShapes, (shapes_all[i*chunk_size: (i+1)*chunk_size], lenses, profile_type, config, regions)) for i in range(splits)]
+        j = 0
+        for r in results:
+            profile_ = r.get()
+            appendToProfile(profile, profile_)
+            r, n, mean_q, std_q, sum_w = profile['all'][-1].getProfile()
+            print "  job %d/%d (n_pairs = %.3fe9) done" % (j, splits, n.sum() / 1e9)
+            j+=1
 
-            # save jackknife region results
-            if config['n_jack']:
-                print "saving jackknife profiles..."
-                for pname in profile.keys():
-                    for i in xrange(len(profile[pname])):
-                        filename = outdir + 'n_jack/' + name + pname + '_%d.npz' % i
-                        profile[pname][i].save(filename)
-
-            # collapse jackknifes into means and stds
-            print "aggregating results..."
-            collapseJackknifes(profile)
-            
-            # save profiles
+        # save jackknife region results
+        if config['n_jack']:
+            print "saving jackknife profiles..."
             for pname in profile.keys():
-                filename = outdir + name + pname + '.npz'
-                print "writing " + filename
-                np.savez(filename, **(profile[pname]))
+                for i in xrange(len(profile[pname])):
+                    filename = outdir + 'n_jack/' + name + pname + '_%d.npz' % i
+                    profile[pname][i].save(filename)
+
+        # collapse jackknifes into means and stds
+        print "aggregating results..."
+        collapseJackknifes(profile)
+
+        # save profiles
+        for pname in profile.keys():
+            filename = outdir + name + pname + '.npz'
+            print "writing " + filename
+            np.savez(filename, **(profile[pname]))
 
     else:
         print "Profiles " + profile_files + " already exist."
