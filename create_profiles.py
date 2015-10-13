@@ -305,7 +305,7 @@ if __name__ == '__main__':
         # open shape catalog
         shapefile = config['shape_file']
         shapes_all = getShapeCatalog(config, verbose=True)
-        if shape_all.size == 0:
+        if shapes_all.size == 0:
             print "Shape catalog empty"
             raise SystemExit
         
@@ -360,6 +360,14 @@ if __name__ == '__main__':
             filename = outdir + name + pname + '.npz'
             print "writing " + filename
             np.savez(filename, **(profile[pname]))
+
+        # print all profile to stdout
+        p = profile['all']
+        print "\nALL profile:"
+        print "{0:>8s} | {1:>12s} | {2:>12s} | {3:>8s} +- {4:>8s}".format("RADIUS", "NUMBER", "SUM(W)/AREA", "MEAN", "STD")
+        print "-" * 62
+        for i in xrange(len(p['n'])):
+            print "{0:8.2f} | {1:12g} | {2:12g} | {3:8g} +- {4:8g}".format(p['mean_r'][i], p['n'][i], p['sum_w'][i], p['mean_q'][i], p['std_q'][i])
 
     else:
         print "Profiles " + profile_files + " already exist."

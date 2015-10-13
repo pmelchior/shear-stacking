@@ -63,7 +63,10 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
         title = key_name
 
     # make the profile for all
-    ax.errorbar(profile['all']['mean_r'], profile['all']['mean_q'], yerr=profile['all']['std_q'], c='k', marker='.', label='all', lw=lw)
+    if plot_type == "shear" or plot_type == "scalar":
+        ax.errorbar(profile['all']['mean_r'], profile['all']['mean_q'], yerr=profile['all']['std_q'], c='k', marker='.', label='all', lw=lw)
+    else:
+        ax.errorbar(profile['all']['mean_r'], profile['all']['sum_w'], yerr=None, c='k', marker='.', label='all', lw=lw)
 
     # make the profile for each split
     colors = getColors(len(limits))
@@ -177,5 +180,6 @@ if __name__ == '__main__':
         makeAxisLabels(ax, plot_type, config)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.95)
         plotfile = outdir + plot_name + "%s.png" % key
+        print "saving " + plotfile
         fig.savefig(plotfile)
 
