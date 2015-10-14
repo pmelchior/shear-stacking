@@ -54,6 +54,13 @@ def getColors(split):
         raise NotImplementedError("Splittings > 5 are not implemented")
     return colors
 
+def getOrderOfMagnitudeLabel(x, digits=2):
+    mag = int(np.floor(np.log10(x)))
+    label = ("%%.%d" % digits) + "f\cdot 10^%d"
+    x /= 10**mag
+    label = label % (x, mag)
+    return label
+
 def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     if config['coords'] == "angular":
         ax.plot(xlim, [0,0], 'k:')
@@ -94,18 +101,18 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     # avoid negative values in shear plots
     if plot_type == "shear":
         ymin, ymax = (1e3, 1e7)
-        #ax.set_ylim(ymin, ymax)
+        ax.set_ylim(ymin, ymax)
     
     # decorations
     n_pair = profile['all']['n'].sum()
-    ax.text(0.05, 0.95, r'$n_\mathrm{pair} = %.2f\cdot 10^9$' % (n_pair/1e9), ha='left', va='top', transform=ax.transAxes, fontsize='small')
+    label = getOrderOfMagnitudeLabel(n_pair, digits=2)
+    ax.text(0.05, 0.95, r'$n_\mathrm{pair} = %s$' % (label), ha='left', va='top', transform=ax.transAxes, fontsize='small')
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
 
 def makeAxisLabels(ax, plot_type, config):
-    """
     if plot_type == "shear":
-        ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')"""
+        ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
     if plot_type == "boost":
         ax.set_ylabel(r'$\sum_\mathrm{pairs}{\langle\Sigma_\mathrm{crit}^{-2}\rangle}_w$')
     if plot_type == "scalar":
@@ -118,10 +125,9 @@ def makeAxisLabels(ax, plot_type, config):
         ax.set_xlabel('Radius [Mpc/$h$]')
         ax.set_xscale('symlog', linthreshx=1e-2)
         ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
-        """
         if plot_type == "shear":
             ax.set_yscale('symlog', linthreshy=1e3)
-            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))"""
+            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
         if plot_type == "boost":
             ax.set_yscale('log')
             ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
