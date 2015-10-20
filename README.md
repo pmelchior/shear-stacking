@@ -41,7 +41,7 @@ An example for a shear profile is given below:
 {
         "coords": "angular",
         "maxrange": 1.1,
-	"n_jack": 40,
+        "n_jack": 40,
         "lens_catalog": "/catalogs/redmapper/redmapper_catalog.fit",
         "lens_cuts": [],
         "lens_z_key": "Z_LAMBDA",
