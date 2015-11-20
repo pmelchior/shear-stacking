@@ -34,16 +34,9 @@ def skyDistance(ra, dec, ra_ref, dec_ref):
 
 band = 'i'
 
-balrog = fitsio.FITS('/n/des/suchyta.1/DataFiles/BalrogDB/cluster-lensing-3/sim-clus-lens-like.fits')
-w = balrog[1].where('modest_i == 0')
-balrog_ids = balrog[1][w]['balrog_index'].astype('i8')
-balrog_version = balrog[1][w]['version']
-# create almost unique superindex and select unique ones
-balrog_unq_idx = getUniqueIndex(balrog_ids + 100000000 * balrog_version)
-w = w[balrog_unq_idx]
-balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename_' + band, 'mag_auto_' + band, 'flux_radius_' + band][w]
-balrog_data = np.dstack((balrog[1]['mag_auto_' + band][w], balrog[1]['flux_radius_' + band][w], balrog[1]['alphawin_j2000_' + band][w], balrog[1]['deltawin_j2000_' + band][w]))[0]
-del balrog_ids, balrog_version, balrog_unq_idx, w
+balrog = fitsio.FITS('/n/des/suchyta.1/des/Clusters-Peaks/sim-shear-cuts.fits')
+balrog_info = balrog[1]['alphawin_j2000_' + band, 'deltawin_j2000_' + band, 'tilename', 'mag_auto_' + band, 'flux_radius_' + band][:]
+balrog_data = np.dstack((balrog[1]['mag_auto_' + band][:], balrog[1]['flux_radius_' + band][:], balrog[1]['alphawin_j2000_' + band][:], balrog[1]['deltawin_j2000_' + band][:]))[0]
 
 # get that DES shape catalog
 des = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/des_sv_wl_info.fits')
@@ -84,7 +77,7 @@ done = 0
 
 for tile in tiles:
     des_tile_mask = (des_tile == tile)
-    balrog_tile_mask = (balrog_info['tilename_' + band] == tile)
+    balrog_tile_mask = (balrog_info['tilename'] == tile)
     print "Tile "+ tile + ", matching ", des_tile_mask.sum() , "vs", balrog_tile_mask.sum()
 
     if des_tile_mask.sum() > balrog_tile_mask.sum():
@@ -137,7 +130,7 @@ for tile in tiles:
                 balrog_data_ = np.delete(balrog_data_, newidx, axis=0)
                 balrog_info_ = np.delete(balrog_info_, newidx, axis=0)
 
-newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_matched_ngmix_tiles_radec10_near10_i_photoz-bin.fits', 'rw')
+newfits = fitsio.FITS('/n/des/pmelchior/des/SV/catalogs/v18/balrog_filter-updated_matched_ngmix_tiles_radec10_near10_i_photoz-bin.fits', 'rw')
 newfits.write(newcat[:done])
 newfits.close()
 
