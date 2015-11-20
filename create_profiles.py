@@ -98,12 +98,11 @@ def getShearValues(shapes_lens, lens, config):
     # compute tangential shear
     gt = tangentialShear(shapes_lens[config['shape_ra_key']], shapes_lens[config['shape_dec_key']], getValues(shapes_lens, config['shape_e1_key'], config['functions']), getValues(shapes_lens, config['shape_e2_key'], config['functions']), lens[config['lens_ra_key']], lens[config['lens_dec_key']], computeB=False)
 
-    """
     # compute DeltaSigma from source redshift
     # we use DeltaSigma = wz2 * wz1**-1 < gt> / (wz2 <s>),
     # where wz1 and wz2 are the effective inverse Sigma_crit
     # weights at given lens z
-    W = getValues(shapes_lens, config['shape_weight_key'], config['functions'])
+    """W = getValues(shapes_lens, config['shape_weight_key'], config['functions'])
     z_l = getValues(lens, config['lens_z_key'], config['functions'])
     z_s = getValues(shapes_lens, config['shape_z_key'], config['functions'])
     Sigma_crit = getSigmaCrit(z_l, z_s)
@@ -112,20 +111,21 @@ def getShearValues(shapes_lens, lens, config):
     W[mask] *= Sigma_crit[mask]**-2
     W[mask == False] = 0
     """
+
     # compute sensitivity and weights: with the photo-z bins,
-    # the precomputed wz1 and wz2 already contain the measurement weights,
-    # we just need to apply the effective Sigma_crit powers to gt and
-    # replace W with wz2 (dropping the measurement weight which would otherwise
+    # the precomputed wz1 already contains the measurement weights,
+    # we just need to apply the effective Sigma_crit to gt and
+    # replace W with wz1**2 (dropping the measurement weight which would otherwise
     # be counted twice).
-    # assumption: <Sigma_crit^-1>^-1 =~ <Sigma_crit> 
+    # See Sheldon et al., 2004, AJ, 127, 2544 (eq. 19)
     W = np.zeros(gt.size) # better safe than sorry
     zs_bin = getValues(shapes_lens, config['shape_z_key'], config['functions'])
     for b in np.unique(zs_bin):
         wz1_ = extrap(lens[config['lens_z_key']], wz1['z'], wz1['bin%d' % b])
-        wz2_ = extrap(lens[config['lens_z_key']], wz2['z'], wz2['bin%d' % b])
         mask = zs_bin == b
-        gt[mask] *= wz1_**-1
-        W[mask] = wz2_
+        gt[mask] /= wz1_
+        W[mask] = wz1_**2
+    
     S = getValues(shapes_lens, config['shape_sensitivity_key'], config['functions'])
     return gt, W, S
 
@@ -346,7 +346,6 @@ if __name__ == '__main__':
         # load lensing weights (w * Sigma_crit ^-1 or -2) for shear profiles
         if profile_type == "shear":
             wz1 = getWZ(power=1)
-            wz2 = getWZ(power=2)
 
         # cut into manageable junks and distribute over cpus
         print "running lens-source stacking ..."
