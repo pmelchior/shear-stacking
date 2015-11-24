@@ -6,60 +6,7 @@ matplotlib.use('agg')
 import pylab as plt
 import numpy as np
 from sys import argv
-
-# use actual LaTeX to render plot and fonts
-from pylab import rcParams
-def setTeXPlot(sampling=1):
-    params = {
-        'backend': 'ps',
-        'ps.distiller.res': 6000,
-        'axes.labelsize': sampling*9,
-        'axes.linewidth' : sampling*0.25,
-        'font.size': sampling*8,
-        'text.fontsize': sampling*8,
-        'legend.fontsize': sampling*8,
-        'legend.markerscale' : sampling*0.5,
-        'xtick.labelsize': sampling*8,
-        'ytick.labelsize': sampling*8,
-        'font.family': 'serif',
-        'font.serif': 'Times',
-        'font.weight': 'medium',
-        'text.usetex': 'times',
-        'figure.subplot.right' : 0.995,
-        'figure.subplot.top' : 0.97,
-        'figure.subplot.left' : 0.125,
-        'figure.subplot.bottom' : 0.07,
-    }
-    rcParams.update(params)
-
-# colors based on blue/white/red divergent colormap
-# from Kevin Moreland:
-# http://www.sandia.gov/~kmorel/documents/ColorMaps/
-# To emphasize the mid-range, I used a darker midpoint of 0.33 instead of 0.88
-# split is the length of the splitting list
-def getColors(split):
-    colors = [(0.23137254901960785, 0.29803921568627451, 0.75294117647058822, 1.0), (0.70588235294117652, 0.015686274509803921, 0.14901960784313725, 1.0)]
-    if split < 3:
-        raise AssertionError("Splitting must at least have two separate bins") 
-    if split == 4:
-        colors.insert(1, (0.7803921568627451, 0.7803921568627451, 0.7803921568627451, 1.0))
-    if split == 5:
-        colors.insert(1, (0.71372549019607845, 0.70196078431372544, 0.90588235294117647, 1.0))
-        colors.insert(2, (0.92941176470588238, 0.65490196078431373, 0.63137254901960782, 1.0))
-    if split == 6:
-        colors.insert(1, (0.62745098039215685, 0.61568627450980395, 0.91764705882352937, 1.0))
-        colors.insert(2, (0.7803921568627451, 0.7803921568627451, 0.7803921568627451, 1.0))
-        colors.insert(3, (0.93333333333333335, 0.53725490196078429, 0.50980392156862742, 1.0))
-    if split > 6:
-        raise NotImplementedError("Splittings > 5 are not implemented")
-    return colors
-
-def getOrderOfMagnitudeLabel(x, digits=2):
-    mag = int(np.floor(np.log10(x)))
-    label = ("%%.%d" % digits) + "f\cdot 10^%d"
-    x /= 10**mag
-    label = label % (x, mag)
-    return label
+from shear_stacking import *
 
 def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     if config['coords'] == "angular":
@@ -101,6 +48,7 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     # avoid negative values in shear plots
     if plot_type == "shear":
         ymin, ymax = (1e3, 1e7)
+        #ymin, ymax = -0.1, 0.1
         ax.set_ylim(ymin, ymax)
     
     # decorations
