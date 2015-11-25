@@ -57,31 +57,7 @@ def makeSlicedProfile(ax, key_name, profile, plot_type, limits, lw=1):
     ax.text(0.05, 0.95, r'$n_\mathrm{pair} = %s$' % (label), ha='left', va='top', transform=ax.transAxes, fontsize='small')
     legend = ax.legend(loc='upper right', numpoints=1, title=title, frameon=False, fontsize='small')
     plt.setp(legend.get_title(),fontsize='small')
-
-def makeAxisLabels(ax, plot_type, config):
-    if plot_type == "shear":
-        ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
-    if plot_type == "boost":
-        ax.set_ylabel(r'$\sum_\mathrm{pairs}{\langle\Sigma_\mathrm{crit}^{-2}\rangle}_w$')
-    if plot_type == "scalar":
-        if plt.matplotlib.rcParams['text.usetex']:
-            ax.set_ylabel(r'\texttt{' + config['shape_scalar_key'].replace("_", "\_") + '}')
-        else:
-            ax.set_ylabel(config['shape_scalar_key'])
-        
-    if config['coords'] == "physical":
-        ax.set_xlabel('Radius [Mpc/$h$]')
-        ax.set_xscale('symlog', linthreshx=1e-2)
-        ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
-        if plot_type == "shear":
-            ax.set_yscale('symlog', linthreshy=1e3)
-            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
-        if plot_type == "boost":
-            ax.set_yscale('log')
-            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
-    else:
-        ax.set_xlabel('Radius [arcmin]')
-
+    makeAxisLabels(ax, plot_type, config)
 
 if __name__ == '__main__':
     # parse inputs
@@ -132,8 +108,7 @@ if __name__ == '__main__':
         print "  " + key
         fig = plt.figure(figsize=(5, 4))
         ax = fig.add_subplot(111)
-        makeSlicedProfile(ax, key, profiles, plot_type, config['splittings'][key])
-        makeAxisLabels(ax, plot_type, config)
+        makeSlicedProfile(ax, key, profiles, plot_type, config)
         fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.95)
         plotfile = outdir + plot_name + "%s.png" % key
         print "saving " + plotfile

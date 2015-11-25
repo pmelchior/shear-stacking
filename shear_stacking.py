@@ -405,3 +405,32 @@ def getOrderOfMagnitudeLabel(x, digits=2):
     label = label % (x, mag)
     return label
 
+def makeAxisLabels(ax, plot_type, config, stacked=False):
+    import matplotlib
+    if plot_type == "shear":
+        ax.set_ylabel(r'$\Delta\Sigma\ [10^{14}\ \mathrm{M}_\odot \mathrm{Mpc}^{-2}]$')
+    if plot_type == "weight":
+        ax.set_ylabel(r'$\sum_\mathrm{pairs}{\langle\Sigma_\mathrm{crit}^{-2}\rangle}_w$')
+    if plot_type == "boost":
+        ax.set_ylabel(r'$\mathrm{boost}$')
+    if plot_type == "scalar":
+        if matplotlib.rcParams['text.usetex']:
+            ax.set_ylabel(r'\texttt{' + config['shape_scalar_key'].replace("_", "\_") + '}')
+        else:
+            ax.set_ylabel(config['shape_scalar_key'])
+        
+    if config['coords'] == "physical":
+        if not stacked:
+            ax.set_xlabel('Radius [Mpc/$h$]')
+        ax.set_xscale('symlog', linthreshx=1e-2)
+        ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
+        if plot_type == "shear":
+            ax.set_yscale('symlog', linthreshy=1e3)
+            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
+        if plot_type == "weight":
+            ax.set_yscale('log')
+            ax.yaxis.set_minor_locator(matplotlib.ticker.LogLocator(subs=np.arange(2, 10)))
+    else:
+        if not stacked:
+            ax.set_xlabel('Radius [arcmin]')
+
