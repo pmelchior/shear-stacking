@@ -1,12 +1,10 @@
-shear-stacking-tests
-====================
+# shear-stacking-tests
 
-This repository contains python scripts to calculate stacked shear profiles and tests based upon them, e.g. consistency for different slices of lensed background galaxies. The basic concept is that the lensing signal in terms of surface mass density (instead of shear) should be entirely determined by the properties of the lens sample and have no dependence on source galaxy properties. An example application is given in section 4.4 of [this paper](http://arxiv.org/abs/1405.4285).
+This repository contains python scripts to calculate stacked shear profiles and tests based upon them, e.g. consistency for different slices of lensed background galaxies. The basic concept is that the lensing signal in terms of surface mass density (instead of shear) should be entirely determined by the properties of the lens sample and have no dependence on source galaxy properties. An example application is given in section 4.4 of [Melchior et al. (2015)](http://arxiv.org/abs/1405.4285).
 
-Usage
------
+## Usage
 
-```
+``` 
 python run_quadrant_check.py test/config.json
 python create_profiles.py test/config.json shear
 python plot_profiles.py test/config.json shear
@@ -30,14 +28,13 @@ The script can run with two different types of profile: `shear` or `scalar`. In 
 
 The third command simply takes the `.npz` files and creates the desired plots.
 
-Configuration file format
--------------------------
+## Configuration file format
 
 Virtually all aspects of the script can be controlled from a config file, in json format. This way, the scripts do not have to be altered to adjust to the pecularities of the lens or shape catalogs.
 
 An example for a shear profile is given below:
 
-```json
+``` json
 {
         "coords": "angular",
         "maxrange": 1.1,
@@ -77,7 +74,8 @@ Coordinates can be either `angular` or `physical` and refer to the units of the 
 `lens_cuts` and `shape_cuts` affect which objects are loaded from either lensing or shape catalogs; filtering can be used on all columns available in either fits files.
 
 `splitting` denote the kind of slices of the either shape or lens catalogs (determined by the value of `split_type`). For technical reason, there need to be at least two splitting keys, or none. The keys of this dictionary specify either a column in the respective catalog or an entry in the `functions` list. For the latter, any function based on the catalog (denoted as `s`) can be implemented. The values denote the limits of the slices for each key, with the upper limit being excluded, e.g. `"FLAGS_I": [0, 1, 2, 4]` creates three slices:
-```
+
+``` 
 FLAGS_I in [0,1), [1,2), [2,4) 
 ```
 
@@ -85,11 +83,9 @@ There is no formal limit on how many different categories/keys can be done, but 
 
 User-defined `functions` can be used for any `_key` entry in the config file, both for lens and for shape catalogs.
 
-Dependencies
-------------
+## Dependencies
 
 * [multiprocessing](https://docs.python.org/2/library/multiprocessing.html)
-* [GalSim](https://github.com/GalSim-developers/GalSim)
 * [Erin Sheldon's esutil](https://code.google.com/p/esutil/)
 * [Erin Sheldon's fitsio](https://github.com/esheldon/fitsio)
 * matplotlib

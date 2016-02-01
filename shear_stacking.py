@@ -39,7 +39,7 @@ class WeightedMeanVar:
     def getStd(self):
         if self.Wi > 0:
             if self.WiSi > 0:
-                # this is not entirely correct since we ignore the extra variance 
+                # this is not entirely correct since we ignore the extra variance
                 # in the sensitivity itself
                 # again: use bootstraps of the mean for more accurate errors
                 return ((self.WiXi2 - (self.WiXi**2)/self.Wi) / ((self.N - 1) * self.WiSi))**0.5
@@ -115,26 +115,25 @@ def extrap(x, xp, yp):
     y = np.array(np.interp(x_, xp, yp))
     y[x_ < xp[0]] = yp[0] + (x_[x_ < xp[0]] -xp[0]) * (yp[0] - yp[1]) / (xp[0] - xp[1])
     y[x_ > xp[-1]] = yp[-1] + (x_[x_ > xp[-1]] -xp[-1])*(yp[-1] - yp[-2])/(xp[-1] - xp[-2])
-    return y  
+    return y
 
-from galsim import Cosmology
-cosmo = Cosmology()
+import esutil.cosmology
+cosmo = esutil.cosmology.Cosmo()
 
 # get separation in deg for distance L in Mpc/h at redshift z
-# uses c/H0 = 3000 Mpc/h
 def Dist2Ang(L, z):
     global cosmo
-    return L / cosmo.Da(z) / 3000. * 180./np.pi
+    return L / cosmo.Da(0,z) * 180./np.pi
 
 def Ang2Dist(theta, z):
     global cosmo
-    return theta * cosmo.Da(z) * 3000. / 180. * np.pi
+    return theta * cosmo.Da(0,z) / 180. * np.pi
 
 def getBeta(z_c, z):
     if z_c >= z:
         return 0
     else:
-        return cosmo.Da(z, z_c)/cosmo.Da(z)  
+        return cosmo.Da(z_c, z)/cosmo.Da(z)
 
 def getSigmaCrit(z_c, z):
     c2_4piG = 3.882 # in 1e14 M_solar / Mpc^2 (since cosmo.Da comes in units of c/H0)
@@ -159,7 +158,7 @@ def getWZ(power=1):
 
 
 class JoinedDataSet:
-    """Helper class to combine two data sets (= np.recarrays) with same 
+    """Helper class to combine two data sets (= np.recarrays) with same
     length but different columns.
 
     Because of an explicit merge, access or slices in rows are much slower
@@ -197,7 +196,7 @@ class JoinedDataSet:
                 # thus creating a slice here
                 pos = slice(pos, pos+1, None)
             from numpy.lib import recfunctions
-            columns = self.data.dtype.names    
+            columns = self.data.dtype.names
             columns_ = []
             dtypes_ = []
             for col in self.extra.dtype.names:
@@ -293,13 +292,13 @@ def getLensCatalog(config, verbose=False):
         return lenses_
     except (KeyError, IOError) as exc: # not in config or file doesn't exist
         pass
-    
+
     return lenses
 
 from struct import unpack
 class HTMFile:
     """Class to read in HTM match files sequentially
-    
+
     Provides two convenient iterators:
       htmf = HTMFile(filename)
       for m1, m2, d12 in htmf:
@@ -325,7 +324,7 @@ class HTMFile:
             raise StopIteration
     def matches(self):
         """Match iterator.
-        
+
         Returns the current match index m1, the list of matches m2 and their
         respective distances (in deg).
         """
@@ -360,7 +359,6 @@ def setTeXPlot(sampling=1):
         'axes.labelsize': sampling*9,
         'axes.linewidth' : sampling*0.25,
         'font.size': sampling*8,
-        'text.fontsize': sampling*8,
         'legend.fontsize': sampling*8,
         'legend.markerscale' : sampling*0.5,
         'xtick.labelsize': sampling*8,
@@ -368,7 +366,7 @@ def setTeXPlot(sampling=1):
         'font.family': 'serif',
         'font.serif': 'Times',
         'font.weight': 'medium',
-        'text.usetex': 'times',
+        'text.usetex': True,
         'figure.subplot.right' : 0.995,
         'figure.subplot.top' : 0.97,
         'figure.subplot.left' : 0.125,
@@ -384,7 +382,7 @@ def setTeXPlot(sampling=1):
 def getColors(split):
     colors = [(0.23137254901960785, 0.29803921568627451, 0.75294117647058822, 1.0), (0.70588235294117652, 0.015686274509803921, 0.14901960784313725, 1.0)]
     if split < 3:
-        raise AssertionError("Splitting must at least have two separate bins") 
+        raise AssertionError("Splitting must at least have two separate bins")
     if split == 4:
         colors.insert(1, (0.7803921568627451, 0.7803921568627451, 0.7803921568627451, 1.0))
     if split == 5:
@@ -418,7 +416,7 @@ def makeAxisLabels(ax, plot_type, config, stacked=False):
             ax.set_ylabel(r'\texttt{' + config['shape_scalar_key'].replace("_", "\_") + '}')
         else:
             ax.set_ylabel(config['shape_scalar_key'])
-        
+
     if config['coords'] == "physical":
         if not stacked:
             ax.set_xlabel('Radius [Mpc/$h$]')
@@ -433,4 +431,3 @@ def makeAxisLabels(ax, plot_type, config, stacked=False):
     else:
         if not stacked:
             ax.set_xlabel('Radius [arcmin]')
-
