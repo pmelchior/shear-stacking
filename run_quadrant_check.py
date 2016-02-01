@@ -67,7 +67,7 @@ def plotDensityMap(config, shapes, nside=512):
     plt.savefig('depth_map_quadrant_check.pdf', transparent=True)
     plt.savefig('depth_map_quadrant_check.png')
 """ end plotting """
-    
+
 if __name__ == '__main__':
     # parse inputs
     try:
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     if config['coords'] not in ['angular', 'physical']:
         print "config: specify either 'angular' or 'physical' coordinates"
         raise SystemExit
-    
+
     # see if we need to do anything
     append_to_extra = False
     try:
@@ -102,8 +102,8 @@ if __name__ == '__main__':
             append_to_extra = True
     except (KeyError, IOError) as exc: # not in config or file doesn't exist
         pass
-    
-    
+
+
     # open shape catalog
     outdir = os.path.dirname(configfile) + "/"
     shapefile = config['shape_file']
@@ -118,9 +118,6 @@ if __name__ == '__main__':
         pass
     shapes = getShapeCatalog(config, verbose=True)
 
-    # Troxel's photo-z bin edges
-    zbin_edges = [0.3, 0.55, 0.83, 1.3]
-    
     if shapes.size:
         basename = os.path.basename(shapefile)
         basename = ".".join(basename.split(".")[:-1])
@@ -130,21 +127,8 @@ if __name__ == '__main__':
         makeDensityMap(densityfile, config, shapes, nside=1024)
         print "created healpix density map %s" % densityfile
         dmap=hu.readDensityMap(densityfile)
-        #plotDensityMap(config, shapes, nside=1024)
+        plotDensityMap(config, shapes, nside=1024)
 
-        """
-        # define shapes selection that are at higher than cluster
-        # redshift, i.e. no high-z cutoff
-        dmaps = []
-        for b in xrange(3):
-            mask = shapes[config['shape_z_key']] >= b
-            print "bin %d: %d shapes" % (b, mask.sum())
-            densityfile = outdir + basename + '_density_bin%d.fits' %b
-            makeDensityMap(densityfile, config, shapes[mask], nside=1024)
-            print "created healpix density map %s" % densityfile
-            dmaps.append(hu.readDensityMap(densityfile))
-        """
-        
         # open lens catalog for quadrant check
         # we need to remove any lens cuts since we want the check for all
         # lenses in the lens_file
@@ -162,27 +146,11 @@ if __name__ == '__main__':
             radius_degrees = Dist2Ang(config['maxrange'], lenses[config['lens_z_key']])
         else:
             radius_degrees = config['maxrange'] * np.ones(lenses.size)
-            
+
         for i in xrange(lenses.size):
             lens = lenses[i]
-            """
-            zl = lens[config['lens_z_key']]
-            # use the dmap the is has shapes from bin above the cluster redshift
-            # FIXME: we lose all clusters above 0.85, but that's only
-            # a small fraction
-            dmap_ = None
-            for b in xrange(3):
-                zmin = zbin_edges[b]
-                zmax = zbin_edges[b+1]
-                if zl < zmin:
-                    dmap_ = dmaps[b]
-                    break
-            # get quadrant ellipticty and mask flags
-            if dmap_ is not None:
-                data['quad_flags'][i] = dmap_.check_quad(lens[config['lens_ra_key']], lens[config['lens_dec_key']], radius_degrees[i], ellip_max)
-            """
             data['quad_flags'][i] = dmap.check_quad(lens[config['lens_ra_key']], lens[config['lens_dec_key']], radius_degrees[i], ellip_max)
-        
+
         # save result as table
         if append_to_extra == False:
             lensfile = config['lens_file']
@@ -201,4 +169,4 @@ if __name__ == '__main__':
         else:
             fits = fitsio.FITS(config['lens_extra_file'], 'rw')
             fits[1].insert_column('quad_flags', data['quad_flags'])
-            fits.close()    
+            fits.close()

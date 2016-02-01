@@ -113,10 +113,10 @@ def makeBoostedProfile(shapes, balrog, common_r=None):
         # we have no means to estimate error of the boost from the aggregate profiles
         p[pname]['std_boost'] = np.zeros_like(p[pname]['mean_boost'])
         try:
-            p[pname]['mean_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['mean_q'])# * p[pname]['mean_boost']
+            p[pname]['mean_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['mean_q']) * p[pname]['mean_boost']
         except KeyError:
-            p[pname]['mean_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['q'])# * p[pname]['mean_boost']
-        p[pname]['std_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['std_q'])# * p[pname]['mean_boost']
+            p[pname]['mean_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['q']) * p[pname]['mean_boost']
+        p[pname]['std_q'] = extrap(r, shapes[pname]['mean_r'], shapes[pname]['std_q']) * p[pname]['mean_boost']
     return p
 
 def computeJackknife(profile, key):
@@ -142,8 +142,8 @@ def computeJackknife(profile, key):
         std_q = ((n_avail - 1.)/n_avail * ((q - mean_q)**2).sum(axis=0))**0.5
 
         # update aggregated profile
-        profile[0][pname]['mean_' + key] = mean_q
-        profile[0][pname]['std_' + key] = std_q
+        profile[0][pname]['mean_' + key] = mean_q.data
+        profile[0][pname]['std_' + key] = std_q.data
     
 def loadProfiles(indir1, indir2, config, n_jack=0):
     # define keys
@@ -235,27 +235,21 @@ if __name__ == '__main__':
 
 
     # sliced profile plots
-    for key in config1['splittings'].keys():
+    for key,limits in config1['splittings'].iteritems():
         print "  " + key
         for plot_type in ['boost', 'shear']:
             fig = plt.figure(figsize=(5, 4))
             ax = fig.add_subplot(111)
             makeSlicedProfile(ax, key, p_r, plot_type, config1)
             fig.subplots_adjust(wspace=0, hspace=0, left=0.16, bottom=0.15, right=0.98, top=0.97)
-            #plotfile = name[plot_type] % (coords, key)
-            #fig.savefig(plotfile)
-
+            plotfile = name[plot_type] % key
+            fig.savefig(plotfile)
             fig.show()
 
-            """
-            for s in xrange(len(p_r[key])):
-                np.savez(plotfile.replace(".png", "_%d.npz" % s), **p_r[key][s])
-            """
-            """
-            # Show weight profiles for each slice
-            for s in xrange(len(p_r[key])):
-                fig = plt.figure(figsize=(5, 7))
-                makeWeightProfile(fig, p_r[key][s], p_all[key][s], p_wo_member[key][s], p_balrog[key][s], coords)
-                fig.subplots_adjust(wspace=0, hspace=0.15, left=0.17, bottom=0.09, right=0.98, top=0.98)
-                fig.show()
-            """
+        # save shear and boost factors to new npz
+        for s in xrange(len(limits)-1):
+            pname = key + "_%d" % s
+            filename = (name['shear'] % pname).replace(".png", ".npz")
+            np.savez(filename, **p_r[pname])
+
+
